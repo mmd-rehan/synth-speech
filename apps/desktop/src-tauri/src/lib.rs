@@ -9,13 +9,14 @@
 //! line.
 
 mod catalog;
+mod downloads;
 mod hardware;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
-use tauri_specta::{collect_commands, Builder};
+use tauri_specta::{collect_commands, collect_events, Builder};
 
 use oas_core::Paths;
 
@@ -78,18 +79,30 @@ async fn spawn_worker_probe(app: tauri::AppHandle) -> Result<String, String> {
 /// Construct the `tauri-specta` builder shared by the running app and the
 /// `export-bindings` binary, so both always agree on the command set.
 fn specta_builder() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![
-        app_version,
-        spawn_worker_probe,
-        hardware::hardware_get_profile,
-        hardware::hardware_refresh,
-        hardware::hardware_usage_history,
-        hardware::copy_diagnostics,
-        catalog::catalog_list,
-        catalog::catalog_get_fit,
-        catalog::catalog_fit_all,
-        catalog::catalog_recommend,
-    ])
+    Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            app_version,
+            spawn_worker_probe,
+            hardware::hardware_get_profile,
+            hardware::hardware_refresh,
+            hardware::hardware_usage_history,
+            hardware::copy_diagnostics,
+            catalog::catalog_list,
+            catalog::catalog_get_fit,
+            catalog::catalog_fit_all,
+            catalog::catalog_recommend,
+            downloads::models_download,
+            downloads::models_pause,
+            downloads::models_resume,
+            downloads::models_cancel,
+            downloads::models_delete,
+            downloads::models_list_installed,
+            downloads::models_import_file,
+        ])
+        .events(collect_events![
+            downloads::DownloadProgress,
+            downloads::DownloadState
+        ])
 }
 
 /// Absolute path to the generated bindings file, resolved from this crate's
@@ -125,6 +138,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .on_window_event(|window, event| {
             // Focus is a good-enough proxy for visibility: slow the usage
@@ -160,6 +174,7 @@ pub fn run() {
                     .map_err(|e| e.user_message())?;
 
             app.manage(hardware::AppState::new(db, paths, catalog, log_guard));
+            downloads::reconcile(app.state::<hardware::AppState>().inner());
             hardware::spawn_usage_monitor(app.handle().clone());
             Ok(())
         })

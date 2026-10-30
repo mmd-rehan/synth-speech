@@ -47,6 +47,21 @@ pub enum OasError {
     #[error("Network error: {reason}")]
     Network { reason: String },
 
+    /// A downloaded file's SHA-256 did not match the catalog.
+    #[error("The download was corrupted (checksum did not match).")]
+    HashMismatch { expected: String, actual: String },
+
+    /// Not enough free disk space for a download.
+    #[error("Not enough disk space: need {needed_bytes} bytes, {available_bytes} free.")]
+    InsufficientDisk {
+        needed_bytes: u64,
+        available_bytes: u64,
+    },
+
+    /// An action needing the network was attempted while offline mode is on.
+    #[error("Offline mode is on, so this needs to be done with the network enabled.")]
+    OfflineMode,
+
     /// An underlying I/O error.
     #[error("I/O error: {reason}")]
     Io { reason: String },
@@ -71,6 +86,9 @@ impl OasError {
             OasError::InvalidInput { .. } => "INVALID_INPUT",
             OasError::Protocol { .. } => "PROTOCOL_ERROR",
             OasError::Network { .. } => "NETWORK_ERROR",
+            OasError::HashMismatch { .. } => "HASH_MISMATCH",
+            OasError::InsufficientDisk { .. } => "INSUFFICIENT_DISK",
+            OasError::OfflineMode => "OFFLINE_MODE",
             OasError::Io { .. } => "IO_ERROR",
             OasError::Internal { .. } => "INTERNAL_ERROR",
         }
@@ -99,13 +117,25 @@ impl OasError {
             OasError::Network { .. } => {
                 Some("Check your internet connection, or enable offline mode to work without it.")
             }
+            OasError::HashMismatch { .. } => {
+                Some("The file was corrupted in transit. Delete it and download again.")
+            }
+            OasError::InsufficientDisk { .. } => {
+                Some("Free up disk space or pick a smaller model.")
+            }
+            OasError::OfflineMode => {
+                Some("Turn off offline mode in Settings to download or check for updates.")
+            }
             _ => None,
         }
     }
 
     /// Whether retrying the same operation might succeed.
     pub fn is_retryable(&self) -> bool {
-        matches!(self, OasError::Network { .. } | OasError::Io { .. })
+        matches!(
+            self,
+            OasError::Network { .. } | OasError::Io { .. } | OasError::HashMismatch { .. }
+        )
     }
 }
 
@@ -192,6 +222,21 @@ mod tests {
             ),
             (OasError::Protocol { reason: "x".into() }, "PROTOCOL_ERROR"),
             (OasError::Network { reason: "x".into() }, "NETWORK_ERROR"),
+            (
+                OasError::HashMismatch {
+                    expected: "a".into(),
+                    actual: "b".into(),
+                },
+                "HASH_MISMATCH",
+            ),
+            (
+                OasError::InsufficientDisk {
+                    needed_bytes: 2,
+                    available_bytes: 1,
+                },
+                "INSUFFICIENT_DISK",
+            ),
+            (OasError::OfflineMode, "OFFLINE_MODE"),
             (OasError::Io { reason: "x".into() }, "IO_ERROR"),
             (OasError::Internal { reason: "x".into() }, "INTERNAL_ERROR"),
         ];

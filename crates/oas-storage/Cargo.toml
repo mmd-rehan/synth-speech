@@ -13,6 +13,7 @@ oas-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+specta = { workspace = true, features = ["derive"] }
 # `bundled` compiles SQLite from source, so there is no system dependency on any
 # platform.
 rusqlite = { version = "0.32", features = ["bundled"] }

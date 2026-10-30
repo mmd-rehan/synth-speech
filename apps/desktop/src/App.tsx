@@ -6,15 +6,18 @@ import { MachineScreen } from "@/components/screens/MachineScreen";
 import { ModelsScreen } from "@/components/screens/ModelsScreen";
 import { PlaceholderScreen } from "@/components/screens/PlaceholderScreen";
 import { useUsage } from "@/lib/usage";
+import { useDownloads } from "@/lib/downloads";
 
 export default function App() {
   const [screen, setScreen] = useState<ScreenId>("home");
   const initUsage = useUsage((s) => s.init);
+  const initDownloads = useDownloads((s) => s.init);
 
-  // Start the live resource feed once, for the sidebar meter and Machine screen.
+  // Start the live feeds once (resource usage + download events).
   useEffect(() => {
     initUsage();
-  }, [initUsage]);
+    initDownloads();
+  }, [initUsage, initDownloads]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">

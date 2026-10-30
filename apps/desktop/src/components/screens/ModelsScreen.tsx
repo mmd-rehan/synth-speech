@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Search, Sparkles, TriangleAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  FilePlus2,
+  Pause,
+  Play,
+  Search,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+  X,
+} from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,17 +20,25 @@ import { commands, type FitResult, type ModelEntry } from "@/bindings";
 import { acceleratorLabel, formatBytes } from "@/lib/format";
 import { speedLabel, verdictRank } from "@/lib/fit";
 import { useUsage } from "@/lib/usage";
+import { downloadPct, useDownloads } from "@/lib/downloads";
 
 export function ModelsScreen() {
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [fits, setFits] = useState<Record<string, FitResult>>({});
+  const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [recommended, setRecommended] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [fitsOnly, setFitsOnly] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const latest = useUsage((s) => s.latest);
+  const dlById = useDownloads((s) => s.byId);
   const debounce = useRef<number | undefined>(undefined);
+
+  async function refreshInstalled() {
+    const res = await commands.modelsListInstalled();
+    if (res.status === "ok") setInstalled(new Set(res.data.map((m) => m.id)));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +48,7 @@ export function ModelsScreen() {
         if (cancelled) return;
         setModels(list);
         setSelectedId((cur) => cur ?? list[0]?.id ?? null);
+        await refreshInstalled();
         await refreshFits();
         const rec = await commands.catalogRecommend();
         if (!cancelled && rec.status === "ok") {
@@ -42,6 +63,14 @@ export function ModelsScreen() {
       cancelled = true;
     };
   }, []);
+
+  // Refresh the installed list whenever a download newly completes.
+  const completedCount = Object.values(dlById).filter(
+    (d) => d.state === "completed",
+  ).length;
+  useEffect(() => {
+    void refreshInstalled();
+  }, [completedCount]);
 
   // Recompute verdicts when live usage changes, debounced.
   useEffect(() => {
@@ -153,7 +182,17 @@ export function ModelsScreen() {
                     {fit && <span>{formatBytes(fit.needed_bytes)} RAM</span>}
                   </div>
                 </div>
-                {fit && <FitBadge verdict={fit.verdict} />}
+                {installed.has(m.id) ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-500">
+                    <CheckCircle2 className="h-4 w-4" /> Installed
+                  </span>
+                ) : dlById[m.id]?.state === "downloading" ? (
+                  <span className="text-xs text-muted-foreground">
+                    {Math.round(downloadPct(dlById[m.id]) ?? 0)}%
+                  </span>
+                ) : (
+                  fit && <FitBadge verdict={fit.verdict} />
+                )}
               </button>
             );
           })}
@@ -164,7 +203,12 @@ export function ModelsScreen() {
           )}
         </div>
 
-        <ModelPanel model={selected} fit={selectedFit} />
+        <ModelPanel
+          model={selected}
+          fit={selectedFit}
+          installed={selected ? installed.has(selected.id) : false}
+          onChanged={refreshInstalled}
+        />
       </div>
     </div>
   );
@@ -173,14 +217,22 @@ export function ModelsScreen() {
 function ModelPanel({
   model,
   fit,
+  installed,
+  onChanged,
 }: {
   model: ModelEntry | null;
   fit: FitResult | undefined;
+  installed: boolean;
+  onChanged: () => void;
 }) {
   const [confirmRisk, setConfirmRisk] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const dl = useDownloads((s) => (model ? s.byId[model.id] : undefined));
 
   useEffect(() => {
     setConfirmRisk(false);
+    setConfirmDelete(false);
   }, [model?.id]);
 
   if (!model) {
@@ -193,9 +245,48 @@ function ModelPanel({
     );
   }
 
+  const modelId = model.id;
   const notRecommended = fit?.verdict === "not_recommended";
   const hardBlocked = fit?.hard_blocked ?? false;
   const canDownloadDirectly = fit != null && !notRecommended;
+  const activeState = dl?.state;
+  const downloading = activeState === "downloading";
+  const paused = activeState === "paused";
+
+  async function startDownload() {
+    setBusy(true);
+    try {
+      await commands.modelsDownload(modelId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importFromFile() {
+    const picked = await open({
+      multiple: false,
+      filters: [{ name: "Model", extensions: ["bin", "gguf", "ggml"] }],
+    });
+    if (typeof picked !== "string") return;
+    setBusy(true);
+    try {
+      const res = await commands.modelsImportFile(modelId, picked);
+      if (res.status === "ok") onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doDelete() {
+    setBusy(true);
+    try {
+      await commands.modelsDelete(modelId);
+      onChanged();
+      setConfirmDelete(false);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <Card className="h-fit lg:sticky lg:top-6">
@@ -233,47 +324,132 @@ function ModelPanel({
           </ul>
         )}
 
-        <div className="pt-1">
-          {canDownloadDirectly && (
-            <Button className="w-full" disabled title="Downloading arrives in M03">
+        <div className="space-y-2 pt-1">
+          {/* Installed: delete flow. */}
+          {installed && !confirmDelete && (
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-sm text-green-600 dark:text-green-500">
+                <CheckCircle2 className="h-4 w-4" /> Installed
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </Button>
+            </div>
+          )}
+          {installed && confirmDelete && (
+            <div className="space-y-2 rounded-md border p-3 text-xs">
+              <p>Delete this model's files from disk?</p>
+              <div className="flex gap-2">
+                <Button variant="destructive" size="sm" onClick={doDelete} disabled={busy}>
+                  Delete
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                  Keep
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* In-progress download. */}
+          {!installed && (downloading || paused) && (
+            <div className="space-y-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${downloadPct(dl) ?? 0}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>
+                  {Math.round(downloadPct(dl) ?? 0)}%
+                  {dl?.speedBps
+                    ? ` · ${formatBytes(dl.speedBps)}/s`
+                    : paused
+                      ? " · paused"
+                      : ""}
+                </span>
+                <div className="flex gap-1">
+                  {downloading ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => commands.modelsPause(modelId)}
+                    >
+                      <Pause className="h-4 w-4" /> Pause
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void commands.modelsResume(modelId)}
+                    >
+                      <Play className="h-4 w-4" /> Resume
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => commands.modelsCancel(modelId)}
+                  >
+                    <X className="h-4 w-4" /> Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Idle, fits: download. */}
+          {!installed && !downloading && !paused && canDownloadDirectly && (
+            <Button className="w-full" onClick={startDownload} disabled={busy}>
               <Download className="h-4 w-4" />
               Download
             </Button>
           )}
 
-          {notRecommended && hardBlocked && (
+          {/* Not recommended, but fits in total RAM: override. */}
+          {!installed && !downloading && !paused && notRecommended && !hardBlocked && !confirmRisk && (
+            <Button variant="outline" className="w-full" onClick={() => setConfirmRisk(true)}>
+              Download anyway…
+            </Button>
+          )}
+          {!installed && !downloading && !paused && notRecommended && !hardBlocked && confirmRisk && (
+            <div className="space-y-2 rounded-md border border-orange-500/40 bg-orange-500/5 p-3 text-xs">
+              <p className="text-orange-700 dark:text-orange-400">
+                This may use swap and slow your whole computer. Continue only if you
+                understand the risk.
+              </p>
+              <Button variant="destructive" size="sm" className="w-full" onClick={startDownload} disabled={busy}>
+                I understand the risk — download
+              </Button>
+            </div>
+          )}
+
+          {/* Hard block: above total RAM. */}
+          {!installed && notRecommended && hardBlocked && (
             <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
               This model needs more memory than your computer has. Download is
               blocked to protect your machine.
             </div>
           )}
 
-          {notRecommended && !hardBlocked && !confirmRisk && (
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setConfirmRisk(true)}
-            >
-              Download anyway…
-            </Button>
+          {dl?.state === "failed" && dl.error && (
+            <p className="text-xs text-destructive">{dl.error}</p>
           )}
 
-          {notRecommended && !hardBlocked && confirmRisk && (
-            <div className="space-y-2 rounded-md border border-orange-500/40 bg-orange-500/5 p-3 text-xs">
-              <p className="text-orange-700 dark:text-orange-400">
-                This may use swap and slow your whole computer. Continue only if
-                you understand the risk.
-              </p>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="w-full"
-                disabled
-                title="Downloading arrives in M03"
-              >
-                I understand the risk — download
-              </Button>
-            </div>
+          {!installed && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={importFromFile}
+              disabled={busy}
+            >
+              <FilePlus2 className="h-4 w-4" /> Add from file…
+            </Button>
           )}
         </div>
       </CardContent>

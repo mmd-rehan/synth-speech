@@ -21,6 +21,7 @@ pub struct AppState {
     pub db: Database,
     pub paths: Paths,
     pub catalog: oas_catalog::Catalog,
+    pub downloads: crate::downloads::DownloadManager,
     probe: Mutex<RealProbe>,
     history: Mutex<UsageHistory>,
     visible: AtomicBool,
@@ -39,6 +40,7 @@ impl AppState {
             db,
             paths,
             catalog,
+            downloads: crate::downloads::DownloadManager::default(),
             probe: Mutex::new(RealProbe::new()),
             history: Mutex::new(UsageHistory::new()),
             visible: AtomicBool::new(true),
@@ -60,6 +62,12 @@ pub(crate) fn current_profile(state: &AppState) -> Result<MachineProfile, String
 /// The most recent usage sample, if the monitor has produced one.
 pub(crate) fn latest_usage(state: &AppState) -> Option<UsageSample> {
     lock(&state.history).latest().cloned()
+}
+
+/// Free bytes on the volume holding the models directory.
+pub(crate) fn models_dir_free_bytes(state: &AppState) -> u64 {
+    let probe = lock(&state.probe);
+    probe.disk_info(&state.paths.models_dir()).free_bytes
 }
 
 /// Recover a mutex guard even if a previous holder panicked.

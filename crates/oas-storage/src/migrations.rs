@@ -14,6 +14,14 @@ const MIGRATIONS: &[&str] = &[
         profile_json   TEXT    NOT NULL,
         captured_at_ms INTEGER NOT NULL
     );",
+    // V2: installed models.
+    "CREATE TABLE installed_models (
+        id              TEXT    PRIMARY KEY,
+        file_name       TEXT    NOT NULL,
+        size_bytes      INTEGER NOT NULL,
+        sha256          TEXT    NOT NULL,
+        installed_at_ms INTEGER NOT NULL
+    );",
 ];
 
 /// The schema version after all migrations are applied.

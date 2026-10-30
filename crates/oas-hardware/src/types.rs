@@ -37,7 +37,9 @@ pub struct CpuInfo {
 /// share one pool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct MemInfo {
+    #[specta(type = f64)]
     pub total_bytes: u64,
+    #[specta(type = f64)]
     pub available_bytes: u64,
     pub is_unified: bool,
 }
@@ -61,7 +63,9 @@ pub struct GpuInfo {
     pub vendor: String,
     pub name: String,
     pub backend: GpuBackend,
+    #[specta(type = Option<f64>)]
     pub dedicated_vram_bytes: Option<u64>,
+    #[specta(type = Option<f64>)]
     pub shared_bytes: Option<u64>,
     pub driver: Option<String>,
     pub usable: bool,
@@ -71,6 +75,7 @@ pub struct GpuInfo {
 /// Free space on the volume holding the models directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct DiskInfo {
+    #[specta(type = f64)]
     pub free_bytes: u64,
     /// Best effort; `None` when it cannot be determined.
     pub is_ssd: Option<bool>,
@@ -122,6 +127,7 @@ pub struct MachineProfile {
     pub thermal: ThermalState,
     pub accel: Vec<Accelerator>,
     /// Unix epoch milliseconds when this profile was captured.
+    #[specta(type = f64)]
     pub captured_at_ms: u64,
 }
 
@@ -130,15 +136,23 @@ pub struct MachineProfile {
 pub struct UsageSample {
     pub cpu_total_pct: f32,
     pub cpu_per_core: Vec<f32>,
+    #[specta(type = f64)]
     pub ram_used_bytes: u64,
+    #[specta(type = f64)]
     pub ram_available_bytes: u64,
+    #[specta(type = f64)]
     pub swap_used_bytes: u64,
     pub gpu_util_pct: Option<f32>,
+    #[specta(type = Option<f64>)]
     pub vram_used_bytes: Option<u64>,
+    #[specta(type = Option<f64>)]
     pub app_rss_bytes: Option<u64>,
+    #[specta(type = f64)]
     pub worker_rss_bytes: u64,
+    #[specta(type = f64)]
     pub disk_free_bytes: u64,
     pub thermal: ThermalState,
     pub battery_pct: Option<u8>,
+    #[specta(type = f64)]
     pub captured_at_ms: u64,
 }

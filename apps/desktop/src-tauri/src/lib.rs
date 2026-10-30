@@ -8,10 +8,15 @@
 //! the `oas-worker` sidecar to prove the app can spawn it and read its `ready`
 //! line.
 
+mod hardware;
+
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 use tauri_specta::{collect_commands, Builder};
+
+use oas_core::Paths;
 
 /// Basic identity of the running app, surfaced in the UI and diagnostics.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -72,7 +77,14 @@ async fn spawn_worker_probe(app: tauri::AppHandle) -> Result<String, String> {
 /// Construct the `tauri-specta` builder shared by the running app and the
 /// `export-bindings` binary, so both always agree on the command set.
 fn specta_builder() -> Builder<tauri::Wry> {
-    Builder::<tauri::Wry>::new().commands(collect_commands![app_version, spawn_worker_probe])
+    Builder::<tauri::Wry>::new().commands(collect_commands![
+        app_version,
+        spawn_worker_probe,
+        hardware::hardware_get_profile,
+        hardware::hardware_refresh,
+        hardware::hardware_usage_history,
+        hardware::copy_diagnostics,
+    ])
 }
 
 /// Absolute path to the generated bindings file, resolved from this crate's
@@ -89,6 +101,8 @@ fn bindings_path() -> std::path::PathBuf {
 /// test harness fails to start on Windows (STATUS_ENTRYPOINT_NOT_FOUND). A real
 /// binary does not have that problem.
 pub fn export_bindings() -> Result<(), String> {
+    // 64-bit byte/timestamp fields are annotated `#[specta(type = f64)]` on the
+    // Rust types (all well under 2^53), so the default exporter is fine.
     specta_builder()
         .export(specta_typescript::Typescript::default(), bindings_path())
         .map_err(|e| e.to_string())
@@ -107,8 +121,36 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(builder.invoke_handler())
+        .on_window_event(|window, event| {
+            // Focus is a good-enough proxy for visibility: slow the usage
+            // sampler when the window is in the background.
+            if let tauri::WindowEvent::Focused(focused) = event {
+                if let Some(state) = window.app_handle().try_state::<hardware::AppState>() {
+                    state.set_visible(*focused);
+                }
+            }
+        })
         .setup(move |app| {
             builder.mount_events(app);
+
+            // Resolve the app data directory and ensure the layout exists.
+            let root = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("could not resolve the app data directory: {e}"))?;
+            let paths = Paths::new(root);
+            for dir in paths.required_dirs() {
+                std::fs::create_dir_all(&dir)
+                    .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+            }
+
+            // Logging to the app data dir, then the database.
+            let log_guard = oas_core::telemetry::init(&paths.logs_dir(), "oas-desktop");
+            let db = oas_storage::Database::open(&paths.database_file())
+                .map_err(|e| e.user_message())?;
+
+            app.manage(hardware::AppState::new(db, paths, log_guard));
+            hardware::spawn_usage_monitor(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

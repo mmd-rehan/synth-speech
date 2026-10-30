@@ -6,7 +6,13 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "SQLite persistence, migrations, and settings."
+description = "SQLite persistence (bundled), schema migrations, and settings."
 
 [dependencies]
 oas-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+# `bundled` compiles SQLite from source, so there is no system dependency on any
+# platform.
+rusqlite = { version = "0.32", features = ["bundled"] }

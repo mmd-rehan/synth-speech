@@ -9,6 +9,8 @@ import {
 
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ramUsedPct, useUsage } from "@/lib/usage";
+import { formatPct } from "@/lib/format";
 
 export type ScreenId = "home" | "jobs" | "models" | "machine" | "settings";
 
@@ -64,10 +66,44 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         })}
       </nav>
 
+      <MiniMeter />
+
       <div className="flex items-center justify-between border-t px-3 py-3">
         <span className="text-xs text-muted-foreground">Theme</span>
         <ThemeToggle />
       </div>
     </aside>
+  );
+}
+
+/** Compact live CPU/RAM bars driven by the usage feed. */
+function MiniMeter() {
+  const latest = useUsage((s) => s.latest);
+  const cpu = latest?.cpu_total_pct ?? 0;
+  const ram = ramUsedPct(latest);
+
+  return (
+    <div className="space-y-2 border-t px-3 py-3">
+      <Bar label="CPU" pct={cpu} />
+      <Bar label="RAM" pct={ram} />
+    </div>
+  );
+}
+
+function Bar({ label, pct }: { label: string; pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-[11px] text-muted-foreground">
+        <span>{label}</span>
+        <span>{formatPct(pct)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-primary transition-all"
+          style={{ width: `${clamped}%` }}
+        />
+      </div>
+    </div>
   );
 }

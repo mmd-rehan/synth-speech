@@ -11,15 +11,208 @@ export const commands = {
 	 *  reported worker version. Proves the sidecar mechanism end to end.
 	 */
 	spawnWorkerProbe: () => typedError<string, string>(__TAURI_INVOKE("spawn_worker_probe")),
+	/**  Return the cached machine profile, building and caching one on first use. */
+	hardwareGetProfile: () => typedError<MachineProfile_Serialize, string>(__TAURI_INVOKE("hardware_get_profile")),
+	/**  Re-scan the machine and replace the cached profile. */
+	hardwareRefresh: () => typedError<MachineProfile_Serialize, string>(__TAURI_INVOKE("hardware_refresh")),
+	/**  The recent usage samples held in the ring buffer, to pre-fill the chart. */
+	hardwareUsageHistory: () => __TAURI_INVOKE<UsageSample_Serialize[]>("hardware_usage_history"),
+	/**  Assemble a diagnostics report: app + profile + recent logs, no user content. */
+	copyDiagnostics: () => typedError<string, string>(__TAURI_INVOKE("copy_diagnostics")),
 };
 
 /* Types */
+/**
+ *  An accelerator the app can *actually* use for inference (not merely one that
+ *  exists). Derived from the profile.
+ */
+export type Accelerator = { kind: "metal_gpu" } | { kind: "core_ml" } | { kind: "cuda"; compute_cap: string } | { kind: "vulkan" } | { kind: "direct_ml" } | { kind: "cpu_avx2" } | { kind: "cpu_avx512" } | { kind: "cpu_neon" };
+
 /**  Basic identity of the running app, surfaced in the UI and diagnostics. */
 export type AppInfo = {
 	/**  Product name. */
 	name: string,
 	/**  Semantic version of the app. */
 	version: string,
+};
+
+/**  CPU SIMD capabilities relevant to inference backends. */
+export type CpuFeatures = {
+	avx2: boolean,
+	avx512: boolean,
+	neon: boolean,
+	amx: boolean,
+};
+
+/**  Processor details. */
+export type CpuInfo = {
+	brand: string,
+	physical_cores: number,
+	logical_cores: number,
+	base_mhz: number,
+	features: CpuFeatures,
+};
+
+/**  Free space on the volume holding the models directory. */
+export type DiskInfo = DiskInfo_Serialize | DiskInfo_Deserialize;
+
+/**  Free space on the volume holding the models directory. */
+export type DiskInfo_Deserialize = {
+	free_bytes: number | null,
+	/**  Best effort; `None` when it cannot be determined. */
+	is_ssd?: boolean | null,
+};
+
+/**  Free space on the volume holding the models directory. */
+export type DiskInfo_Serialize = {
+	free_bytes: number | null,
+	/**  Best effort; `None` when it cannot be determined. */
+	is_ssd: boolean | null,
+};
+
+/**  The graphics backend a GPU is exposed through. */
+export type GpuBackend = "metal" | "vulkan" | "dx12" | "cuda" | "gl" | "other";
+
+/**
+ *  A graphics adapter that was found. `usable` records whether we can actually
+ *  run inference on it; if not, `not_usable_reason` explains why (shown in UI).
+ */
+export type GpuInfo = GpuInfo_Serialize | GpuInfo_Deserialize;
+
+/**
+ *  A graphics adapter that was found. `usable` records whether we can actually
+ *  run inference on it; if not, `not_usable_reason` explains why (shown in UI).
+ */
+export type GpuInfo_Deserialize = {
+	vendor: string,
+	name: string,
+	backend: GpuBackend,
+	dedicated_vram_bytes?: number | null,
+	shared_bytes?: number | null,
+	driver?: string | null,
+	usable: boolean,
+	not_usable_reason?: string | null,
+};
+
+/**
+ *  A graphics adapter that was found. `usable` records whether we can actually
+ *  run inference on it; if not, `not_usable_reason` explains why (shown in UI).
+ */
+export type GpuInfo_Serialize = {
+	vendor: string,
+	name: string,
+	backend: GpuBackend,
+	dedicated_vram_bytes: number | null,
+	shared_bytes: number | null,
+	driver: string | null,
+	usable: boolean,
+	not_usable_reason: string | null,
+};
+
+/**  The full machine profile, captured at launch and refreshed on demand. */
+export type MachineProfile = MachineProfile_Serialize | MachineProfile_Deserialize;
+
+/**  The full machine profile, captured at launch and refreshed on demand. */
+export type MachineProfile_Deserialize = {
+	os: OsInfo,
+	cpu: CpuInfo,
+	memory: MemInfo,
+	gpus: GpuInfo_Deserialize[],
+	disk: DiskInfo_Deserialize,
+	power: PowerInfo_Deserialize,
+	thermal: ThermalState,
+	accel: Accelerator[],
+	/**  Unix epoch milliseconds when this profile was captured. */
+	captured_at_ms: number | null,
+};
+
+/**  The full machine profile, captured at launch and refreshed on demand. */
+export type MachineProfile_Serialize = {
+	os: OsInfo,
+	cpu: CpuInfo,
+	memory: MemInfo,
+	gpus: GpuInfo_Serialize[],
+	disk: DiskInfo_Serialize,
+	power: PowerInfo_Serialize,
+	thermal: ThermalState,
+	accel: Accelerator[],
+	/**  Unix epoch milliseconds when this profile was captured. */
+	captured_at_ms: number | null,
+};
+
+/**
+ *  System memory. `is_unified` is true on Apple Silicon, where CPU and GPU
+ *  share one pool.
+ */
+export type MemInfo = {
+	total_bytes: number | null,
+	available_bytes: number | null,
+	is_unified: boolean,
+};
+
+/**  Operating system identity. */
+export type OsInfo = {
+	name: string,
+	version: string,
+	/**  Architecture, e.g. `aarch64` or `x86_64`. */
+	arch: string,
+};
+
+/**  Power source and battery state. Everything is best effort. */
+export type PowerInfo = PowerInfo_Serialize | PowerInfo_Deserialize;
+
+/**  Power source and battery state. Everything is best effort. */
+export type PowerInfo_Deserialize = {
+	on_battery: boolean,
+	battery_pct?: number | null,
+	low_power_mode: boolean,
+};
+
+/**  Power source and battery state. Everything is best effort. */
+export type PowerInfo_Serialize = {
+	on_battery: boolean,
+	battery_pct: number | null,
+	low_power_mode: boolean,
+};
+
+/**  Thermal pressure. `Unknown` is a valid, non-fatal answer. */
+export type ThermalState = "nominal" | "fair" | "serious" | "critical" | "unknown";
+
+/**  A point-in-time sample of live resource usage for the charts. */
+export type UsageSample = UsageSample_Serialize | UsageSample_Deserialize;
+
+/**  A point-in-time sample of live resource usage for the charts. */
+export type UsageSample_Deserialize = {
+	cpu_total_pct: number | null,
+	cpu_per_core: (number | null)[],
+	ram_used_bytes: number | null,
+	ram_available_bytes: number | null,
+	swap_used_bytes: number | null,
+	gpu_util_pct?: number | null,
+	vram_used_bytes?: number | null,
+	app_rss_bytes?: number | null,
+	worker_rss_bytes: number | null,
+	disk_free_bytes: number | null,
+	thermal: ThermalState,
+	battery_pct?: number | null,
+	captured_at_ms: number | null,
+};
+
+/**  A point-in-time sample of live resource usage for the charts. */
+export type UsageSample_Serialize = {
+	cpu_total_pct: number | null,
+	cpu_per_core: (number | null)[],
+	ram_used_bytes: number | null,
+	ram_available_bytes: number | null,
+	swap_used_bytes: number | null,
+	gpu_util_pct: number | null,
+	vram_used_bytes: number | null,
+	app_rss_bytes: number | null,
+	worker_rss_bytes: number | null,
+	disk_free_bytes: number | null,
+	thermal: ThermalState,
+	battery_pct: number | null,
+	captured_at_ms: number | null,
 };
 
 /* Tauri Specta runtime */

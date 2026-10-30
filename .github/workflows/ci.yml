@@ -21,7 +21,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-13, windows-latest, ubuntu-22.04]
+        # macOS (Apple Silicon), Windows, and Linux cover all three OS families.
+        # Intel macOS (macos-13) is validated at release time (see docs 09/10):
+        # GitHub's free Intel runners are heavily queued and were repeatedly
+        # cancelled by cancel-in-progress before they could start.
+        os: [macos-14, windows-latest, ubuntu-22.04]
 
     steps:
       - uses: actions/checkout@v4

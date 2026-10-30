@@ -11,7 +11,11 @@ default-run = "oas-desktop"
 
 [lib]
 name = "oas_desktop_lib"
-crate-type = ["lib", "cdylib", "staticlib"]
+# Desktop-only MVP: a plain rlib. The `cdylib`/`staticlib` types that Tauri's
+# mobile targets need are intentionally omitted — on Windows they make
+# `cargo test` load a sibling DLL and abort with STATUS_ENTRYPOINT_NOT_FOUND.
+# Re-add them if/when iOS or Android becomes a target.
+crate-type = ["lib"]
 
 [[bin]]
 name = "oas-desktop"

@@ -144,8 +144,14 @@ fn enumerate_gpus() -> Vec<GpuInfo> {
             } else {
                 Some(info.driver_info.clone())
             };
+            // Apple GPUs report a zero PCI vendor id through wgpu; recover the
+            // vendor from the adapter name.
+            let mut vendor = vendor_name(info.vendor);
+            if vendor == "Unknown" && info.name.contains("Apple") {
+                vendor = "Apple".to_string();
+            }
             Some(GpuInfo {
-                vendor: vendor_name(info.vendor),
+                vendor,
                 name: info.name,
                 backend,
                 dedicated_vram_bytes: None,
@@ -187,9 +193,16 @@ impl SystemProbe for RealProbe {
     fn mem_info(&self) -> MemInfo {
         // Unified memory is the Apple Silicon case: aarch64 macOS.
         let is_unified = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+        let total = self.system.total_memory();
+        let mut available = self.system.available_memory();
+        if available == 0 {
+            // Some platforms (notably macOS) report 0 for "available"; fall back
+            // to total minus used so the fit engine has a usable figure.
+            available = total.saturating_sub(self.system.used_memory());
+        }
         MemInfo {
-            total_bytes: self.system.total_memory(),
-            available_bytes: self.system.available_memory(),
+            total_bytes: total,
+            available_bytes: available,
             is_unified,
         }
     }

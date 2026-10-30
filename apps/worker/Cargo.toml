@@ -1,0 +1,17 @@
+[package]
+name = "oas-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Inference worker process (Tauri sidecar). Speaks the JSONL protocol over stdio."
+
+[[bin]]
+name = "oas-worker"
+path = "src/main.rs"
+
+[dependencies]
+oas-core.workspace = true
+oas-protocol.workspace = true

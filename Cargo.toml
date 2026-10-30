@@ -1,0 +1,63 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/oas-core",
+    "crates/oas-hardware",
+    "crates/oas-fit",
+    "crates/oas-catalog",
+    "crates/oas-download",
+    "crates/oas-audio",
+    "crates/oas-engine",
+    "crates/oas-engine-whisper",
+    "crates/oas-engine-sherpa",
+    "crates/oas-jobs",
+    "crates/oas-storage",
+    "crates/oas-export",
+    "crates/oas-protocol",
+    "apps/worker",
+    # "apps/desktop/src-tauri",  # re-enabled once the Tauri app is scaffolded
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+repository = "https://github.com/mmd-rehan/synth-speech"
+authors = ["Open Audio Studio contributors"]
+
+[workspace.dependencies]
+# Internal crates
+oas-core = { path = "crates/oas-core" }
+oas-hardware = { path = "crates/oas-hardware" }
+oas-fit = { path = "crates/oas-fit" }
+oas-catalog = { path = "crates/oas-catalog" }
+oas-download = { path = "crates/oas-download" }
+oas-audio = { path = "crates/oas-audio" }
+oas-engine = { path = "crates/oas-engine" }
+oas-engine-whisper = { path = "crates/oas-engine-whisper" }
+oas-engine-sherpa = { path = "crates/oas-engine-sherpa" }
+oas-jobs = { path = "crates/oas-jobs" }
+oas-storage = { path = "crates/oas-storage" }
+oas-export = { path = "crates/oas-export" }
+oas-protocol = { path = "crates/oas-protocol" }
+
+# Shared third-party dependencies
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+uuid = { version = "1", features = ["v4", "serde"] }
+specta = "=2.0.0-rc.27"
+specta-typescript = "=0.0.14"
+
+[profile.release]
+# Smaller, faster binaries for the shipped app and workers.
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+# NOTE: unwinding is kept (no panic = "abort") so inference workers can catch
+# panics with catch_unwind and report them as structured errors.

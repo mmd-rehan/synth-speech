@@ -1,0 +1,20 @@
+[package]
+name = "oas-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Domain types, errors, ids, and tracing setup for Open Audio Studio (no I/O)."
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

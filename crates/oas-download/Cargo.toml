@@ -1,0 +1,12 @@
+[package]
+name = "oas-download"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Resumable, SHA-256-verified model downloads with atomic rename."
+
+[dependencies]
+oas-core.workspace = true

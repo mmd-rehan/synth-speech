@@ -1,0 +1,12 @@
+[package]
+name = "oas-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "The Engine trait and shared inference types."
+
+[dependencies]
+oas-core.workspace = true

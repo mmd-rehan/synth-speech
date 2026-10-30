@@ -1,0 +1,12 @@
+[package]
+name = "oas-hardware"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Machine profiling: CPU, RAM, GPU, disk, OS, thermal, and live usage."
+
+[dependencies]
+oas-core.workspace = true

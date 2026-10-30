@@ -1,0 +1,12 @@
+[package]
+name = "oas-engine-sherpa"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "sherpa-onnx backend (Phase 2)."
+
+[dependencies]
+oas-core.workspace = true

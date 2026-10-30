@@ -1,0 +1,12 @@
+[package]
+name = "oas-fit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Fit engine: predicts RAM, speed, and a verdict for a model on this machine."
+
+[dependencies]
+oas-core.workspace = true

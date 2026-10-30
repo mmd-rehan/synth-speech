@@ -1,0 +1,12 @@
+[package]
+name = "oas-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Audio decode, resample, VAD, and chunking to 16 kHz mono f32."
+
+[dependencies]
+oas-core.workspace = true

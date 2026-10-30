@@ -1,0 +1,60 @@
+# --- Internal planning material (kept local, never shipped) ---
+/docs/
+/CLAUDE.md
+/AUTONOMOUS-PROMPT.md
+/.remember/
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Rust ---
+/target/
+**/target/
+**/*.rs.bk
+
+# --- Node / web ---
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# --- Tauri generated / build output ---
+/apps/desktop/src-tauri/gen/
+/apps/desktop/src-tauri/binaries/
+
+# --- Secrets, keys, certificates (never commit) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.certSigningRequest
+*.mobileprovision
+
+# --- Model weights & large media fixtures (generated/downloaded, never committed) ---
+*.bin
+*.gguf
+*.ggml
+*.onnx
+*.mlmodelc/
+/models/
+/catalog/cache/
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.mp4
+*.ogg
+*.aac
+
+# --- Logs & temp ---
+*.log
+/tmp/
+*.tmp

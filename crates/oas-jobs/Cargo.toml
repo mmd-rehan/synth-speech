@@ -1,0 +1,12 @@
+[package]
+name = "oas-jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Job queue, scheduler, and resource governor."
+
+[dependencies]
+oas-core.workspace = true

@@ -70,9 +70,28 @@ async fn spawn_worker_probe(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 /// Construct the `tauri-specta` builder shared by the running app and the
-/// bindings-export test, so both always agree on the command set.
+/// `export-bindings` binary, so both always agree on the command set.
 fn specta_builder() -> Builder<tauri::Wry> {
     Builder::<tauri::Wry>::new().commands(collect_commands![app_version, spawn_worker_probe])
+}
+
+/// Absolute path to the generated bindings file, resolved from this crate's
+/// location so it is independent of the current working directory.
+fn bindings_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
+}
+
+/// Regenerate the TypeScript IPC bindings from the Rust command set.
+///
+/// Invoked by the `export-bindings` binary (used in CI and `scripts/check.sh`)
+/// and on every debug launch. Kept out of a `#[test]` on purpose: `tauri-build`
+/// only applies its required linker arguments to *binaries*, so a Tauri-linked
+/// test harness fails to start on Windows (STATUS_ENTRYPOINT_NOT_FOUND). A real
+/// binary does not have that problem.
+pub fn export_bindings() -> Result<(), String> {
+    specta_builder()
+        .export(specta_typescript::Typescript::default(), bindings_path())
+        .map_err(|e| e.to_string())
 }
 
 /// Entry point used by both desktop `main` and the mobile entry point.
@@ -83,12 +102,7 @@ pub fn run() {
     // In debug builds, regenerate the TypeScript bindings on every launch so
     // they can never drift from the Rust command definitions.
     #[cfg(debug_assertions)]
-    builder
-        .export(
-            specta_typescript::Typescript::default(),
-            "../src/bindings.ts",
-        )
-        .expect("failed to export TypeScript bindings");
+    export_bindings().expect("failed to export TypeScript bindings");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -99,21 +113,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running the Open Audio Studio app");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Regenerates `../src/bindings.ts` and fails if the command set cannot be
-    /// exported. CI also checks the committed file matches this output.
-    #[test]
-    fn exports_typescript_bindings() {
-        specta_builder()
-            .export(
-                specta_typescript::Typescript::default(),
-                "../src/bindings.ts",
-            )
-            .expect("export bindings");
-    }
 }

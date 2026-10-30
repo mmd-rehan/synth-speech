@@ -12,14 +12,25 @@ default-run = "oas-desktop"
 [lib]
 name = "oas_desktop_lib"
 # Desktop-only MVP: a plain rlib. The `cdylib`/`staticlib` types that Tauri's
-# mobile targets need are intentionally omitted — on Windows they make
-# `cargo test` load a sibling DLL and abort with STATUS_ENTRYPOINT_NOT_FOUND.
-# Re-add them if/when iOS or Android becomes a target.
+# mobile targets need are intentionally omitted (re-add for iOS/Android).
+#
+# `test`/`doctest` are disabled here and on the binaries below: tauri-build only
+# applies its linker arguments to *binaries*, so a Tauri-linked test harness is
+# missing imports and fails to start on Windows (STATUS_ENTRYPOINT_NOT_FOUND).
+# Bindings are generated and drift-checked via the `export-bindings` binary.
 crate-type = ["lib"]
+test = false
+doctest = false
 
 [[bin]]
 name = "oas-desktop"
 path = "src/main.rs"
+test = false
+
+[[bin]]
+name = "export-bindings"
+path = "src/bin/export-bindings.rs"
+test = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

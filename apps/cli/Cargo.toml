@@ -1,0 +1,20 @@
+[package]
+name = "oas-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Developer CLI: transcribe a file through the engine for fast iteration and CI."
+
+[[bin]]
+name = "oas-cli"
+path = "src/main.rs"
+
+[dependencies]
+oas-core.workspace = true
+oas-audio.workspace = true
+oas-engine.workspace = true
+oas-engine-whisper.workspace = true
+oas-export.workspace = true

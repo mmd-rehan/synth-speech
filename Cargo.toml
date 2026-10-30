@@ -15,6 +15,7 @@ members = [
     "crates/oas-export",
     "crates/oas-protocol",
     "apps/worker",
+    "apps/cli",
     "apps/desktop/src-tauri",
 ]
 

@@ -43,7 +43,19 @@ jobs:
             librsvg2-dev \
             libxdo-dev \
             build-essential \
-            file
+            file \
+            cmake \
+            clang \
+            libclang-dev
+
+      - name: Install cmake (macOS)
+        if: runner.os == 'macOS'
+        run: brew list cmake >/dev/null 2>&1 || brew install cmake
+
+      - name: Point bindgen at libclang (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

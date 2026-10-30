@@ -6,7 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "whisper.cpp backend via whisper-rs."
+description = "whisper.cpp backend via whisper-rs (CPU build)."
 
 [dependencies]
 oas-core.workspace = true
+oas-engine.workspace = true
+tracing.workspace = true
+# CPU build for M04; GPU backends (metal/cuda/vulkan) are opt-in features added
+# in M07, so the default build is CPU-only.
+whisper-rs = "0.16"

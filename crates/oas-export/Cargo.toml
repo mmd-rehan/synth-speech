@@ -10,3 +10,9 @@ description = "Transcript exporters: TXT, SRT, VTT, JSON."
 
 [dependencies]
 oas-core.workspace = true
+oas-engine.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+proptest = "1"

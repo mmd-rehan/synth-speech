@@ -10,3 +10,15 @@ description = "Audio decode, resample, VAD, and chunking to 16 kHz mono f32."
 
 [dependencies]
 oas-core.workspace = true
+tracing.workspace = true
+symphonia = { version = "0.5", default-features = false, features = [
+    "wav",
+    "isomp4",
+    "ogg",
+    "flac",
+    "mp3",
+    "aac",
+    "alac",
+    "pcm",
+    "vorbis",
+] }

@@ -217,4 +217,30 @@ mod tests {
         let err = Envelope::<WorkerToCore>::from_line("not json").unwrap_err();
         assert_eq!(err.code(), "PROTOCOL_ERROR");
     }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        // Decoding an arbitrary line must never panic — it either parses or
+        // returns a PROTOCOL_ERROR.
+        #[test]
+        fn arbitrary_lines_never_panic(line in ".{0,400}") {
+            match Envelope::<WorkerToCore>::from_line(&line) {
+                Ok(_) => {}
+                Err(e) => prop_assert_eq!(e.code(), "PROTOCOL_ERROR"),
+            }
+            match Envelope::<CoreToWorker>::from_line(&line) {
+                Ok(_) => {}
+                Err(e) => prop_assert_eq!(e.code(), "PROTOCOL_ERROR"),
+            }
+        }
+
+        // Any envelope with a well-formed but wrong version is rejected cleanly.
+        #[test]
+        fn wrong_versions_rejected(v in 2u32..u32::MAX) {
+            let line = format!("{{\"v\":{v},\"type\":\"ready\",\"worker_version\":\"x\"}}");
+            let err = Envelope::<WorkerToCore>::from_line(&line).unwrap_err();
+            prop_assert_eq!(err.code(), "PROTOCOL_ERROR");
+        }
+    }
 }

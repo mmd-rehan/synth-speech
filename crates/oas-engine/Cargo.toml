@@ -10,3 +10,7 @@ description = "The Engine trait and shared inference types."
 
 [dependencies]
 oas-core.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

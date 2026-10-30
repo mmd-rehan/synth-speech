@@ -2308,6 +2308,9 @@ name = "oas-catalog"
 version = "0.1.0"
 dependencies = [
  "oas-core",
+ "serde",
+ "serde_json",
+ "specta",
 ]
 
 [[package]]

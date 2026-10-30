@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Verify that every model in catalog/models.v1.json has a size and SHA-256 that
+match the real file at its source host.
+
+For Hugging Face `resolve` URLs this reads the repository's LFS metadata (size +
+sha256 oid) without downloading the files. Exits non-zero on any mismatch so it
+can gate CI. Never trusts the catalog's own numbers — they are checked against
+the source of truth.
+"""
+
+import json
+import re
+import sys
+import urllib.request
+from pathlib import Path
+from collections import defaultdict
+
+ROOT = Path(__file__).resolve().parent.parent
+CATALOG = ROOT / "catalog" / "models.v1.json"
+HF_RESOLVE = re.compile(
+    r"^https://huggingface\.co/(?P<repo>[^/]+/[^/]+)/resolve/[^/]+/(?P<file>.+)$"
+)
+
+
+def fetch_json(url: str):
+    req = urllib.request.Request(url, headers={"User-Agent": "oas-verify-catalog"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return json.load(resp)
+
+
+def hf_tree(repo: str) -> dict:
+    """Map filename -> {size, sha256} for all LFS files in a HF repo."""
+    url = f"https://huggingface.co/api/models/{repo}/tree/main?recursive=true"
+    out = {}
+    for entry in fetch_json(url):
+        if entry.get("type") != "file":
+            continue
+        lfs = entry.get("lfs") or {}
+        out[entry["path"]] = {
+            "size": lfs.get("size", entry.get("size")),
+            "sha256": lfs.get("oid"),
+        }
+    return out
+
+
+def main() -> int:
+    catalog = json.loads(CATALOG.read_text())
+    models = catalog["models"]
+
+    # Group models by their HF repo so each repo's tree is fetched once.
+    by_repo: dict[str, list] = defaultdict(list)
+    unknown = []
+    for m in models:
+        match = HF_RESOLVE.match(m["url"])
+        if match:
+            by_repo[match.group("repo")].append((m, match.group("file")))
+        else:
+            unknown.append(m)
+
+    failures = []
+    for repo, items in by_repo.items():
+        try:
+            tree = hf_tree(repo)
+        except Exception as e:  # noqa: BLE001 - report and fail, don't crash
+            for m, _ in items:
+                failures.append(f"{m['id']}: could not read source repo {repo}: {e}")
+            continue
+        for m, filename in items:
+            src = tree.get(filename)
+            if not src:
+                failures.append(f"{m['id']}: {filename} not found in {repo}")
+                continue
+            if src["size"] != m["weights_bytes"]:
+                failures.append(
+                    f"{m['id']}: size {m['weights_bytes']} != source {src['size']}"
+                )
+            if (src["sha256"] or "").lower() != m["sha256"].lower():
+                failures.append(
+                    f"{m['id']}: sha256 {m['sha256']} != source {src['sha256']}"
+                )
+            if not failures or failures[-1].split(':')[0] != m['id']:
+                print(f"OK   {m['id']}  ({m['weights_bytes']} bytes)")
+
+    for m in unknown:
+        failures.append(f"{m['id']}: unrecognised URL host, cannot verify: {m['url']}")
+
+    if failures:
+        print("\nVERIFICATION FAILED:", file=sys.stderr)
+        for f in failures:
+            print(f"  - {f}", file=sys.stderr)
+        return 1
+
+    print(f"\nAll {len(models)} catalog entries match the source.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

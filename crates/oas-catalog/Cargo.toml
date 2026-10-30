@@ -10,3 +10,6 @@ description = "Model catalog: schema, versions, licenses, hashes, URLs, and load
 
 [dependencies]
 oas-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specta = { workspace = true, features = ["derive"] }

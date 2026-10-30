@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "whisper-tiny",
+      "name": "Whisper Tiny",
+      "family": "whisper",
+      "variant": "tiny",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+      "weights_bytes": 77691713,
+      "sha256": "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+      "runtime_overhead_bytes": 250000000,
+      "per_minute_audio_bytes": 2000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 380000000,
+      "quality_tier": 1,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.03 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.08 },
+        { "profile": "rtx3060_cuda", "rtf": 0.02 }
+      ]
+    },
+    {
+      "id": "whisper-tiny-q5_1",
+      "name": "Whisper Tiny (q5_1)",
+      "family": "whisper",
+      "variant": "tiny",
+      "quant": "q5_1",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin",
+      "weights_bytes": 32152673,
+      "sha256": "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+      "runtime_overhead_bytes": 250000000,
+      "per_minute_audio_bytes": 2000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 340000000,
+      "quality_tier": 1,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.03 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.07 },
+        { "profile": "rtx3060_cuda", "rtf": 0.02 }
+      ]
+    },
+    {
+      "id": "whisper-base",
+      "name": "Whisper Base",
+      "family": "whisper",
+      "variant": "base",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+      "weights_bytes": 147951465,
+      "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+      "runtime_overhead_bytes": 300000000,
+      "per_minute_audio_bytes": 2000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 450000000,
+      "quality_tier": 2,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.04 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.12 },
+        { "profile": "rtx3060_cuda", "rtf": 0.025 }
+      ]
+    },
+    {
+      "id": "whisper-base-q5_1",
+      "name": "Whisper Base (q5_1)",
+      "family": "whisper",
+      "variant": "base",
+      "quant": "q5_1",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
+      "weights_bytes": 59707625,
+      "sha256": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+      "runtime_overhead_bytes": 300000000,
+      "per_minute_audio_bytes": 2000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 360000000,
+      "quality_tier": 2,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.04 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.11 },
+        { "profile": "rtx3060_cuda", "rtf": 0.025 }
+      ]
+    },
+    {
+      "id": "whisper-small",
+      "name": "Whisper Small",
+      "family": "whisper",
+      "variant": "small",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin",
+      "weights_bytes": 487601967,
+      "sha256": "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+      "runtime_overhead_bytes": 500000000,
+      "per_minute_audio_bytes": 4000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 790000000,
+      "quality_tier": 3,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.06 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.3 },
+        { "profile": "rtx3060_cuda", "rtf": 0.03 }
+      ]
+    },
+    {
+      "id": "whisper-small-q5_1",
+      "name": "Whisper Small (q5_1)",
+      "family": "whisper",
+      "variant": "small",
+      "quant": "q5_1",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+      "weights_bytes": 190085487,
+      "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+      "runtime_overhead_bytes": 500000000,
+      "per_minute_audio_bytes": 4000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 490000000,
+      "quality_tier": 3,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.06 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.28 },
+        { "profile": "rtx3060_cuda", "rtf": 0.03 }
+      ]
+    },
+    {
+      "id": "whisper-medium",
+      "name": "Whisper Medium",
+      "family": "whisper",
+      "variant": "medium",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin",
+      "weights_bytes": 1533763059,
+      "sha256": "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+      "runtime_overhead_bytes": 750000000,
+      "per_minute_audio_bytes": 6000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 1850000000,
+      "quality_tier": 4,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.1 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.7 },
+        { "profile": "rtx3060_cuda", "rtf": 0.05 }
+      ]
+    },
+    {
+      "id": "whisper-medium-q5_0",
+      "name": "Whisper Medium (q5_0)",
+      "family": "whisper",
+      "variant": "medium",
+      "quant": "q5_0",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
+      "weights_bytes": 539212467,
+      "sha256": "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
+      "runtime_overhead_bytes": 750000000,
+      "per_minute_audio_bytes": 6000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 900000000,
+      "quality_tier": 4,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.1 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.62 },
+        { "profile": "rtx3060_cuda", "rtf": 0.05 }
+      ]
+    },
+    {
+      "id": "whisper-large-v3-turbo",
+      "name": "Whisper Large v3 Turbo",
+      "family": "whisper",
+      "variant": "large-v3-turbo",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin",
+      "weights_bytes": 1624555275,
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "runtime_overhead_bytes": 1100000000,
+      "per_minute_audio_bytes": 8000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 1950000000,
+      "quality_tier": 4,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.08 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.55 },
+        { "profile": "rtx3060_cuda", "rtf": 0.04 }
+      ]
+    },
+    {
+      "id": "whisper-large-v3-turbo-q5_0",
+      "name": "Whisper Large v3 Turbo (q5_0)",
+      "family": "whisper",
+      "variant": "large-v3-turbo",
+      "quant": "q5_0",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+      "weights_bytes": 574041195,
+      "sha256": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+      "runtime_overhead_bytes": 1100000000,
+      "per_minute_audio_bytes": 8000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 880000000,
+      "quality_tier": 4,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.08 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 0.5 },
+        { "profile": "rtx3060_cuda", "rtf": 0.04 }
+      ]
+    },
+    {
+      "id": "whisper-large-v3",
+      "name": "Whisper Large v3",
+      "family": "whisper",
+      "variant": "large-v3",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin",
+      "weights_bytes": 3095033483,
+      "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+      "runtime_overhead_bytes": 1100000000,
+      "per_minute_audio_bytes": 8000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 3400000000,
+      "quality_tier": 5,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.18 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 1.4 },
+        { "profile": "rtx3060_cuda", "rtf": 0.08 }
+      ]
+    },
+    {
+      "id": "whisper-large-v3-q5_0",
+      "name": "Whisper Large v3 (q5_0)",
+      "family": "whisper",
+      "variant": "large-v3",
+      "quant": "q5_0",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin",
+      "weights_bytes": 1081140203,
+      "sha256": "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+      "runtime_overhead_bytes": 1100000000,
+      "per_minute_audio_bytes": 8000000,
+      "gpu_capable": true,
+      "min_vram_bytes": 1400000000,
+      "quality_tier": 5,
+      "license": "MIT",
+      "rtf_reference": [
+        { "profile": "apple_m_metal", "rtf": 0.18 },
+        { "profile": "ryzen_8c_avx2_cpu", "rtf": 1.25 },
+        { "profile": "rtx3060_cuda", "rtf": 0.08 }
+      ]
+    }
+  ]
+}

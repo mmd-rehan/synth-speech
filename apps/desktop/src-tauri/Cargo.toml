@@ -39,6 +39,8 @@ tauri-build = { version = "2", features = [] }
 oas-core.workspace = true
 oas-protocol.workspace = true
 oas-hardware.workspace = true
+oas-catalog.workspace = true
+oas-fit.workspace = true
 oas-storage.workspace = true
 serde.workspace = true
 serde_json.workspace = true

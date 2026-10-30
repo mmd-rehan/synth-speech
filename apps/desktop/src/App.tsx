@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Sidebar, type ScreenId } from "@/components/Sidebar";
 import { HomeScreen } from "@/components/screens/HomeScreen";
 import { MachineScreen } from "@/components/screens/MachineScreen";
+import { ModelsScreen } from "@/components/screens/ModelsScreen";
 import { PlaceholderScreen } from "@/components/screens/PlaceholderScreen";
 import { useUsage } from "@/lib/usage";
 
@@ -21,7 +22,8 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         {screen === "home" && <HomeScreen />}
         {screen === "machine" && <MachineScreen />}
-        {screen !== "home" && screen !== "machine" && (
+        {screen === "models" && <ModelsScreen />}
+        {screen !== "home" && screen !== "machine" && screen !== "models" && (
           <PlaceholderScreen screen={screen} />
         )}
       </main>

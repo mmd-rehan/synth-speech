@@ -200,7 +200,10 @@ mod tests {
     #[test]
     fn rejects_empty_models() {
         let bad = r#"{"schema_version":1,"models":[]}"#;
-        assert!(Catalog::from_json(bad).unwrap_err().user_message().contains("no models"));
+        assert!(Catalog::from_json(bad)
+            .unwrap_err()
+            .user_message()
+            .contains("no models"));
     }
 
     #[test]
@@ -209,7 +212,10 @@ mod tests {
             "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
             "xyz",
         );
-        assert!(Catalog::from_json(&bad).unwrap_err().user_message().contains("sha256"));
+        assert!(Catalog::from_json(&bad)
+            .unwrap_err()
+            .user_message()
+            .contains("sha256"));
     }
 
     #[test]
@@ -224,13 +230,19 @@ mod tests {
              "runtime_overhead_bytes":1,"per_minute_audio_bytes":1,"gpu_capable":true,
              "min_vram_bytes":1,"quality_tier":1,"license":"MIT"}
         ]}"#;
-        assert!(Catalog::from_json(dup).unwrap_err().user_message().contains("duplicate"));
+        assert!(Catalog::from_json(dup)
+            .unwrap_err()
+            .user_message()
+            .contains("duplicate"));
     }
 
     #[test]
     fn rejects_bad_quality_tier() {
         let bad = GOOD.replace("\"quality_tier\": 1", "\"quality_tier\": 9");
-        assert!(Catalog::from_json(&bad).unwrap_err().user_message().contains("quality_tier"));
+        assert!(Catalog::from_json(&bad)
+            .unwrap_err()
+            .user_message()
+            .contains("quality_tier"));
     }
 
     #[test]

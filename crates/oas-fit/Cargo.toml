@@ -6,7 +6,15 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Fit engine: predicts RAM, speed, and a verdict for a model on this machine."
+description = "Fit engine: predicts memory feasibility, speed, and a verdict for a model on this machine."
 
 [dependencies]
 oas-core.workspace = true
+oas-catalog.workspace = true
+oas-hardware.workspace = true
+serde.workspace = true
+specta = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json.workspace = true

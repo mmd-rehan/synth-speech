@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub struct AppState {
     pub db: Database,
     pub paths: Paths,
+    pub catalog: oas_catalog::Catalog,
     probe: Mutex<RealProbe>,
     history: Mutex<UsageHistory>,
     visible: AtomicBool,
@@ -28,10 +29,16 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Database, paths: Paths, log_guard: LogGuard) -> Self {
+    pub fn new(
+        db: Database,
+        paths: Paths,
+        catalog: oas_catalog::Catalog,
+        log_guard: LogGuard,
+    ) -> Self {
         AppState {
             db,
             paths,
+            catalog,
             probe: Mutex::new(RealProbe::new()),
             history: Mutex::new(UsageHistory::new()),
             visible: AtomicBool::new(true),
@@ -42,6 +49,17 @@ impl AppState {
     pub fn set_visible(&self, visible: bool) {
         self.visible.store(visible, Ordering::Relaxed);
     }
+}
+
+/// The current machine profile (cached or freshly built). Shared with the
+/// catalog/fit commands.
+pub(crate) fn current_profile(state: &AppState) -> Result<MachineProfile, String> {
+    get_or_build(state)
+}
+
+/// The most recent usage sample, if the monitor has produced one.
+pub(crate) fn latest_usage(state: &AppState) -> Option<UsageSample> {
+    lock(&state.history).latest().cloned()
 }
 
 /// Recover a mutex guard even if a previous holder panicked.

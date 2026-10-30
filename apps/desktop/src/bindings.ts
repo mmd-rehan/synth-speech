@@ -19,6 +19,21 @@ export const commands = {
 	hardwareUsageHistory: () => __TAURI_INVOKE<UsageSample_Serialize[]>("hardware_usage_history"),
 	/**  Assemble a diagnostics report: app + profile + recent logs, no user content. */
 	copyDiagnostics: () => typedError<string, string>(__TAURI_INVOKE("copy_diagnostics")),
+	/**  List every model in the catalog. */
+	catalogList: () => __TAURI_INVOKE<ModelEntry_Serialize[]>("catalog_list"),
+	/**
+	 *  Compute the fit verdict for one model on this machine, optionally for a
+	 *  specific accelerator (otherwise the machine's best is used).
+	 */
+	catalogGetFit: (modelId: string, accelerator: Accelerator | null) => typedError<FitResult, string>(__TAURI_INVOKE("catalog_get_fit", { modelId, accelerator })),
+	/**
+	 *  Compute fits for every catalog model at once (auto accelerator). Aligned to
+	 *  `catalog_list` order. Used by the Models screen and recomputed as live usage
+	 *  changes.
+	 */
+	catalogFitAll: () => typedError<FitResult[], string>(__TAURI_INVOKE("catalog_fit_all")),
+	/**  The recommended model id for this machine, if any reaches Good/Excellent. */
+	catalogRecommend: () => typedError<string | null, string>(__TAURI_INVOKE("catalog_recommend")),
 };
 
 /* Types */
@@ -68,6 +83,33 @@ export type DiskInfo_Serialize = {
 	free_bytes: number | null,
 	/**  Best effort; `None` when it cannot be determined. */
 	is_ssd: boolean | null,
+};
+
+/**
+ *  A structured reason behind a verdict, so the UI can render icons and tests
+ *  can assert on specifics.
+ */
+export type FitReason = { kind: "memory"; detail: string } | { kind: "speed"; detail: string } | { kind: "thermal"; detail: string } | { kind: "gpu"; detail: string } | { kind: "vram"; detail: string };
+
+/**  The full result of a fit computation. */
+export type FitResult = {
+	model_id: string,
+	verdict: Verdict,
+	/**  Estimated real-time factor (processing time / audio duration). */
+	rtf_est: number | null,
+	needed_bytes: number | null,
+	pool_bytes: number | null,
+	headroom_bytes: number | null,
+	/**  The accelerator this prediction assumes. */
+	accelerator: Accelerator,
+	/**  Whether these numbers come from a real calibration run (future work). */
+	measured: boolean,
+	/**  Whether download/run must be hard-blocked (needed exceeds total RAM). */
+	hard_blocked: boolean,
+	/**  One-sentence plain-language summary. */
+	summary: string,
+	/**  Structured reasons for the detail view. */
+	reasons: FitReason[],
 };
 
 /**  The graphics backend a GPU is exposed through. */
@@ -150,6 +192,85 @@ export type MemInfo = {
 	is_unified: boolean,
 };
 
+/**  A single downloadable model. */
+export type ModelEntry = ModelEntry_Serialize | ModelEntry_Deserialize;
+
+/**  A single downloadable model. */
+export type ModelEntry_Deserialize = {
+	/**  Stable catalog id, e.g. `whisper-large-v3-turbo-q5_0`. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  Model family, e.g. `whisper`. */
+	family: string,
+	/**  Variant within the family, e.g. `large-v3-turbo`. */
+	variant: string,
+	/**  Quantisation tag (e.g. `q5_0`), or `None` for full precision. */
+	quant?: string | null,
+	/**  Whether this is an English-only model. */
+	english_only?: boolean,
+	/**  Download URL. */
+	url: string,
+	/**  Optional mirror URLs. */
+	mirrors?: string[],
+	/**  Real file size in bytes (verified). */
+	weights_bytes: number | null,
+	/**  Real lowercase hex SHA-256 of the file (verified). */
+	sha256: string,
+	/**  Non-weight working memory at runtime (activations, KV cache, etc.). */
+	runtime_overhead_bytes: number | null,
+	/**  Extra working set per minute of audio. */
+	per_minute_audio_bytes: number | null,
+	/**  Whether the model can run on a GPU accelerator. */
+	gpu_capable: boolean,
+	/**  Minimum dedicated VRAM for a GPU run. */
+	min_vram_bytes: number | null,
+	/**  Quality tier, 1 (lowest) to 5 (highest). */
+	quality_tier: number,
+	/**  License identifier (e.g. `MIT`). */
+	license: string,
+	/**  Reference RTF measurements per machine profile. */
+	rtf_reference?: RtfReference[],
+};
+
+/**  A single downloadable model. */
+export type ModelEntry_Serialize = {
+	/**  Stable catalog id, e.g. `whisper-large-v3-turbo-q5_0`. */
+	id: string,
+	/**  Display name. */
+	name: string,
+	/**  Model family, e.g. `whisper`. */
+	family: string,
+	/**  Variant within the family, e.g. `large-v3-turbo`. */
+	variant: string,
+	/**  Quantisation tag (e.g. `q5_0`), or `None` for full precision. */
+	quant?: string,
+	/**  Whether this is an English-only model. */
+	english_only: boolean,
+	/**  Download URL. */
+	url: string,
+	/**  Optional mirror URLs. */
+	mirrors: string[],
+	/**  Real file size in bytes (verified). */
+	weights_bytes: number | null,
+	/**  Real lowercase hex SHA-256 of the file (verified). */
+	sha256: string,
+	/**  Non-weight working memory at runtime (activations, KV cache, etc.). */
+	runtime_overhead_bytes: number | null,
+	/**  Extra working set per minute of audio. */
+	per_minute_audio_bytes: number | null,
+	/**  Whether the model can run on a GPU accelerator. */
+	gpu_capable: boolean,
+	/**  Minimum dedicated VRAM for a GPU run. */
+	min_vram_bytes: number | null,
+	/**  Quality tier, 1 (lowest) to 5 (highest). */
+	quality_tier: number,
+	/**  License identifier (e.g. `MIT`). */
+	license: string,
+	/**  Reference RTF measurements per machine profile. */
+	rtf_reference: RtfReference[],
+};
+
 /**  Operating system identity. */
 export type OsInfo = {
 	name: string,
@@ -173,6 +294,18 @@ export type PowerInfo_Serialize = {
 	on_battery: boolean,
 	battery_pct: number | null,
 	low_power_mode: boolean,
+};
+
+/**
+ *  One reference measurement of a model's real-time factor on a named machine
+ *  profile. Used by the fit engine's speed estimate. These are provisional
+ *  estimates until calibrated against real runs (M03+).
+ */
+export type RtfReference = {
+	/**  A profile key such as `apple_m1_metal` or `ryzen_8c_avx2_cpu`. */
+	profile: string,
+	/**  Real-time factor: processing time / audio duration (lower is faster). */
+	rtf: number | null,
 };
 
 /**  Thermal pressure. `Unknown` is a valid, non-fatal answer. */
@@ -214,6 +347,9 @@ export type UsageSample_Serialize = {
 	battery_pct: number | null,
 	captured_at_ms: number | null,
 };
+
+/**  The overall fit judgement, worst to best is the opposite of this order. */
+export type Verdict = "excellent" | "good" | "slow" | "risky" | "not_recommended";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

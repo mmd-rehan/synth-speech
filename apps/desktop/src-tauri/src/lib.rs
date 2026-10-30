@@ -8,6 +8,7 @@
 //! the `oas-worker` sidecar to prove the app can spawn it and read its `ready`
 //! line.
 
+mod catalog;
 mod hardware;
 
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,10 @@ fn specta_builder() -> Builder<tauri::Wry> {
         hardware::hardware_refresh,
         hardware::hardware_usage_history,
         hardware::copy_diagnostics,
+        catalog::catalog_list,
+        catalog::catalog_get_fit,
+        catalog::catalog_fit_all,
+        catalog::catalog_recommend,
     ])
 }
 
@@ -149,7 +154,12 @@ pub fn run() {
             let db = oas_storage::Database::open(&paths.database_file())
                 .map_err(|e| e.user_message())?;
 
-            app.manage(hardware::AppState::new(db, paths, log_guard));
+            // The catalog is embedded at build time and validated on load.
+            let catalog =
+                oas_catalog::Catalog::from_json(include_str!("../../../../catalog/models.v1.json"))
+                    .map_err(|e| e.user_message())?;
+
+            app.manage(hardware::AppState::new(db, paths, catalog, log_guard));
             hardware::spawn_usage_monitor(app.handle().clone());
             Ok(())
         })

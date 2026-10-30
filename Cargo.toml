@@ -15,7 +15,7 @@ members = [
     "crates/oas-export",
     "crates/oas-protocol",
     "apps/worker",
-    # "apps/desktop/src-tauri",  # re-enabled once the Tauri app is scaffolded
+    "apps/desktop/src-tauri",
 ]
 
 [workspace.package]
@@ -50,8 +50,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 uuid = { version = "1", features = ["v4", "serde"] }
-specta = "=2.0.0-rc.27"
-specta-typescript = "=0.0.14"
+# Pinned to match tauri-specta 2.0.0-rc.26's exact requirements.
+specta = "=2.0.0-rc.26"
+specta-typescript = "=0.0.13"
 
 [profile.release]
 # Smaller, faster binaries for the shipped app and workers.

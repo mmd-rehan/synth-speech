@@ -6,7 +6,21 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Machine profiling: CPU, RAM, GPU, disk, OS, thermal, and live usage."
+description = "Machine profiling: CPU, RAM, GPU, disk, power, thermal, and live usage."
 
 [dependencies]
 oas-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+specta = { workspace = true, features = ["derive"] }
+sysinfo = "0.33"
+# Default features pull in the native backends (Metal/Vulkan/DX12/GL) needed to
+# enumerate adapters. Missing drivers at runtime simply yield no adapters.
+wgpu = "23"
+
+[target.'cfg(any(target_arch = "x86", target_arch = "x86_64"))'.dependencies]
+raw-cpuid = "11"
+
+[dev-dependencies]
+serde_json.workspace = true

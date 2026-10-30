@@ -1,19 +1,22 @@
-//! Machine profiling: CPU, RAM, GPU, disk, OS, thermal, and live usage.
+//! `oas-hardware` builds an honest picture of the user's machine: a static
+//! [`MachineProfile`] captured at launch, and a stream of [`UsageSample`]s for
+//! the live resource view.
 //!
-//! Placeholder crate scaffolded in M00; the real implementation lands in M01.
-//! It links against `oas-core` so the workspace layering is exercised from the start.
+//! All collection goes through the [`SystemProbe`] trait so the profile builder
+//! and usage sampler can be tested with synthetic machines (an 8 GB laptop, an
+//! M1, an RTX box, a GPU-less PC) without touching real hardware.
 
 #![forbid(unsafe_code)]
 
-/// Re-export of the shared result type so downstream crates import it from here.
-pub use oas_core::Result;
+pub mod probe;
+pub mod profile;
+pub mod types;
+pub mod usage;
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn links_against_core() {
-        // Proves the crate compiles and is wired to oas-core.
-        let err = oas_core::OasError::OutOfMemory;
-        assert_eq!(err.code(), "OUT_OF_MEMORY");
-    }
-}
+pub use probe::{RealProbe, SystemProbe};
+pub use profile::build_profile;
+pub use types::{
+    Accelerator, CpuFeatures, CpuInfo, DiskInfo, GpuBackend, GpuInfo, MachineProfile, MemInfo,
+    OsInfo, PowerInfo, ThermalState, UsageSample,
+};
+pub use usage::UsageHistory;

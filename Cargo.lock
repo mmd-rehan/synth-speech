@@ -2683,10 +2683,17 @@ version = "0.1.0"
 dependencies = [
  "oas-catalog",
  "oas-core",
+ "oas-engine",
+ "oas-export",
  "oas-hardware",
+ "oas-protocol",
+ "oas-storage",
  "proptest",
  "serde",
+ "serde_json",
  "specta",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

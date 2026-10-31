@@ -4,8 +4,18 @@
 
 use oas_catalog::ModelEntry;
 use oas_hardware::ThermalState;
+use serde::{Deserialize, Serialize};
+use specta::Type;
 
 const GIB: u64 = 1024 * 1024 * 1024;
+
+/// Whisper CPU scaling flattens past about 8 threads.
+pub const MAX_THREADS_PER_JOB: u32 = 8;
+
+/// Memory always left for the OS and other apps: `max(1.5 GB, 15% of total)`.
+pub fn safety_reserve(total_bytes: u64) -> u64 {
+    (3 * GIB / 2).max((total_bytes as f64 * 0.15) as u64)
+}
 
 /// Resource budgets for the machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,9 +31,8 @@ pub struct Budgets {
 impl Budgets {
     /// Build budgets from a memory pool, total RAM, cores, and GPU count.
     pub fn new(pool_bytes: u64, total_bytes: u64, logical_cores: u32, gpu_count: u32) -> Self {
-        let reserve = (3 * GIB / 2).max((total_bytes as f64 * 0.15) as u64);
         Budgets {
-            mem_budget: pool_bytes.saturating_sub(reserve),
+            mem_budget: pool_bytes.saturating_sub(safety_reserve(total_bytes)),
             cpu_budget: logical_cores.saturating_sub(1).max(1),
             gpu_slots: gpu_count, // 1 per GPU
         }
@@ -38,13 +47,15 @@ pub struct JobCost {
 }
 
 impl JobCost {
-    /// Memory cost from a catalog model (weights + overhead + audio working set).
-    pub fn for_model(model: &ModelEntry, gpu: bool) -> Self {
+    /// Memory cost from a catalog model: weights + overhead + audio working
+    /// set. An unknown length counts as one minute until the worker reports it.
+    pub fn for_model(model: &ModelEntry, audio_duration_ms: Option<u64>, gpu: bool) -> Self {
+        let minutes = audio_duration_ms.map_or(1, |ms| ms.div_ceil(60_000).max(1));
         JobCost {
             mem_bytes: model
                 .weights_bytes
                 .saturating_add(model.runtime_overhead_bytes)
-                .saturating_add(model.per_minute_audio_bytes),
+                .saturating_add(model.per_minute_audio_bytes.saturating_mul(minutes)),
             gpu,
         }
     }
@@ -54,9 +65,10 @@ impl JobCost {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Reservation {
     pub mem_bytes: u64,
+    /// CPU budget this job holds (its threads; 0 for a GPU job).
     pub cpu_slots: u32,
     pub gpu_slot: bool,
-    /// Threads to hand the worker (informational; derived from concurrency).
+    /// Threads to hand the worker.
     pub threads: u32,
 }
 
@@ -68,6 +80,8 @@ pub enum DenyReason {
     NoGpuSlot,
     Thermal,
     Battery,
+    /// A job with this model ran out of memory at this concurrency before.
+    LearnedLimit,
 }
 
 impl DenyReason {
@@ -79,6 +93,9 @@ impl DenyReason {
             DenyReason::NoGpuSlot => "Waiting: the GPU is busy",
             DenyReason::Thermal => "Waiting: the machine is too hot",
             DenyReason::Battery => "Waiting: paused on battery",
+            DenyReason::LearnedLimit => {
+                "Waiting: this model ran out of memory with more jobs at once"
+            }
         }
     }
 }
@@ -106,21 +123,37 @@ impl Governor {
         self.budgets
     }
 
+    /// Replace the budgets (live memory changes); reservations are kept.
+    pub fn set_budgets(&mut self, budgets: Budgets) {
+        self.budgets = budgets;
+    }
+
     pub fn reserved_mem(&self) -> u64 {
         self.reserved_mem
     }
 
-    /// Threads to give a CPU job, balancing the CPU budget across jobs and
-    /// capping at 8 (whisper CPU scaling flattens past ~8).
-    fn threads_for(&self, concurrent_cpu_jobs: u32) -> u32 {
-        let n = concurrent_cpu_jobs.max(1);
-        (self.budgets.cpu_budget / n).clamp(1, 8)
+    /// CPU budget currently held by running jobs.
+    pub fn reserved_cpu(&self) -> u32 {
+        self.cpu_slots_used
     }
 
-    /// Try to admit a job, reserving resources on success.
+    /// `threads_per_job = max(1, floor(cpu_budget / concurrent_jobs_target))`,
+    /// capped at [`MAX_THREADS_PER_JOB`].
+    pub fn threads_for(&self, concurrent_jobs_target: u32) -> u32 {
+        (self.budgets.cpu_budget / concurrent_jobs_target.max(1)).clamp(1, MAX_THREADS_PER_JOB)
+    }
+
+    /// Whether a job of this memory cost fits right now.
+    pub fn mem_fits(&self, mem_bytes: u64) -> bool {
+        self.reserved_mem.saturating_add(mem_bytes) <= self.budgets.mem_budget
+    }
+
+    /// Try to admit a job, reserving resources on success. `concurrent_jobs_target`
+    /// is how many jobs the CPU budget should be split between.
     pub fn admit(
         &mut self,
         cost: JobCost,
+        concurrent_jobs_target: u32,
         thermal: ThermalState,
         battery_blocked: bool,
     ) -> Result<Reservation, DenyReason> {
@@ -130,7 +163,7 @@ impl Governor {
         if battery_blocked {
             return Err(DenyReason::Battery);
         }
-        if self.reserved_mem.saturating_add(cost.mem_bytes) > self.budgets.mem_budget {
+        if !self.mem_fits(cost.mem_bytes) {
             return Err(DenyReason::Memory);
         }
 
@@ -143,17 +176,17 @@ impl Governor {
                 mem_bytes: cost.mem_bytes,
                 cpu_slots: 0,
                 gpu_slot: true,
-                threads: self.budgets.cpu_budget.clamp(1, 8),
+                threads: self.budgets.cpu_budget.clamp(1, MAX_THREADS_PER_JOB),
             }
         } else {
-            if self.cpu_slots_used >= self.budgets.cpu_budget {
+            let threads = self.threads_for(concurrent_jobs_target);
+            if self.cpu_slots_used.saturating_add(threads) > self.budgets.cpu_budget {
                 return Err(DenyReason::Cpu);
             }
-            let threads = self.threads_for(self.cpu_slots_used + 1);
-            self.cpu_slots_used += 1;
+            self.cpu_slots_used += threads;
             Reservation {
                 mem_bytes: cost.mem_bytes,
-                cpu_slots: 1,
+                cpu_slots: threads,
                 gpu_slot: false,
                 threads,
             }
@@ -183,8 +216,80 @@ impl Governor {
     }
 }
 
-/// Gauge level for the "Parallel jobs" control.
+/// The most jobs a user may force in Manual mode: never more than total RAM can
+/// hold, however the warning is dismissed.
+pub fn hard_cap(total_ram: u64, per_job_mem: u64) -> u32 {
+    total_ram
+        .checked_div(per_job_mem)
+        .map_or(u32::MAX, |n| n.min(u32::MAX as u64) as u32)
+        .max(1)
+}
+
+/// Auto mode: start at one job, add one while there is headroom and idle CPU,
+/// drop one at once under pressure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutoConcurrency {
+    target: u32,
+    last_raise_ms: u64,
+}
+
+impl AutoConcurrency {
+    /// Time between raises, so each new job's load shows up before the next.
+    pub const RAISE_INTERVAL_MS: u64 = 5_000;
+    /// CPU use (percent) above which the CPU no longer counts as idle.
+    pub const CPU_BUSY_PCT: f32 = 75.0;
+
+    pub fn new() -> Self {
+        AutoConcurrency {
+            target: 1,
+            last_raise_ms: 0,
+        }
+    }
+
+    pub fn target(&self) -> u32 {
+        self.target
+    }
+
+    /// Pressure seen: shed one job of concurrency, never below one.
+    pub fn on_pressure(&mut self, now_ms: u64) {
+        self.target = self.target.saturating_sub(1).max(1);
+        self.last_raise_ms = now_ms;
+    }
+
+    /// Raise by one if the queue is saturating the target, the next job fits,
+    /// and the CPU has room. Lowers to `max_safe` if the machine got tighter.
+    pub fn on_tick(
+        &mut self,
+        now_ms: u64,
+        saturated: bool,
+        next_job_fits: bool,
+        cpu_total_pct: f32,
+        max_safe: u32,
+    ) {
+        let max_safe = max_safe.max(1);
+        self.target = self.target.min(max_safe);
+        let waited = now_ms.saturating_sub(self.last_raise_ms) >= Self::RAISE_INTERVAL_MS;
+        if saturated
+            && next_job_fits
+            && waited
+            && cpu_total_pct < Self::CPU_BUSY_PCT
+            && self.target < max_safe
+        {
+            self.target += 1;
+            self.last_raise_ms = now_ms;
+        }
+    }
+}
+
+impl Default for AutoConcurrency {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Gauge level for the "Parallel jobs" control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum GaugeLevel {
     Safe,
     Tight,
@@ -192,7 +297,7 @@ pub enum GaugeLevel {
 }
 
 /// Gauge result: level + the maximum safe concurrency.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct Gauge {
     pub level: GaugeLevel,
     pub max_safe: u32,
@@ -251,7 +356,7 @@ mod tests {
         // ~13.6 GB budget / 4 GB ≈ 3 jobs.
         let mut admitted = 0;
         for _ in 0..10 {
-            if g.admit(cost, ThermalState::Nominal, false).is_ok() {
+            if g.admit(cost, 100, ThermalState::Nominal, false).is_ok() {
                 admitted += 1;
             }
         }
@@ -267,7 +372,7 @@ mod tests {
         };
         let mut admitted = 0;
         for _ in 0..10 {
-            if g.admit(cost, ThermalState::Nominal, false).is_ok() {
+            if g.admit(cost, 100, ThermalState::Nominal, false).is_ok() {
                 admitted += 1;
             }
         }
@@ -282,11 +387,11 @@ mod tests {
             gpu: false,
         };
         assert_eq!(
-            g.admit(cost, ThermalState::Serious, false),
+            g.admit(cost, 100, ThermalState::Serious, false),
             Err(DenyReason::Thermal)
         );
         assert_eq!(
-            g.admit(cost, ThermalState::Nominal, true),
+            g.admit(cost, 100, ThermalState::Nominal, true),
             Err(DenyReason::Battery)
         );
     }
@@ -298,9 +403,9 @@ mod tests {
             mem_bytes: 2 * GIB,
             gpu: true,
         };
-        assert!(g.admit(gpu, ThermalState::Nominal, false).is_ok());
+        assert!(g.admit(gpu, 100, ThermalState::Nominal, false).is_ok());
         assert_eq!(
-            g.admit(gpu, ThermalState::Nominal, false),
+            g.admit(gpu, 100, ThermalState::Nominal, false),
             Err(DenyReason::NoGpuSlot)
         );
     }
@@ -312,13 +417,13 @@ mod tests {
             mem_bytes: 4 * GIB,
             gpu: false,
         };
-        let r1 = g.admit(cost, ThermalState::Nominal, false).unwrap();
-        let _r2 = g.admit(cost, ThermalState::Nominal, false).unwrap();
-        g.admit(cost, ThermalState::Nominal, false).unwrap();
-        assert!(g.admit(cost, ThermalState::Nominal, false).is_err());
+        let r1 = g.admit(cost, 100, ThermalState::Nominal, false).unwrap();
+        let _r2 = g.admit(cost, 100, ThermalState::Nominal, false).unwrap();
+        g.admit(cost, 100, ThermalState::Nominal, false).unwrap();
+        assert!(g.admit(cost, 100, ThermalState::Nominal, false).is_err());
         g.release(&r1);
         // After releasing one, another fits again.
-        assert!(g.admit(cost, ThermalState::Nominal, false).is_ok());
+        assert!(g.admit(cost, 100, ThermalState::Nominal, false).is_ok());
     }
 
     #[test]
@@ -328,8 +433,84 @@ mod tests {
             mem_bytes: GIB,
             gpu: false,
         };
-        let r1 = g.admit(cost, ThermalState::Nominal, false).unwrap();
-        assert_eq!(r1.threads, 8); // first job capped at 8, not 31
+        let alone = g.admit(cost, 1, ThermalState::Nominal, false).unwrap();
+        assert_eq!(alone.threads, 8); // capped at 8, not 31
+        let shared = g.admit(cost, 4, ThermalState::Nominal, false).unwrap();
+        assert_eq!(shared.threads, 7); // 31 / 4
+    }
+
+    #[test]
+    fn cpu_reservation_is_the_threads_handed_out() {
+        // cpu_budget 7, split between two jobs: 3 threads each.
+        let mut g = Governor::new(budgets(64, 8, 0));
+        let cost = JobCost {
+            mem_bytes: GIB,
+            gpu: false,
+        };
+        let a = g.admit(cost, 2, ThermalState::Nominal, false).unwrap();
+        let _b = g.admit(cost, 2, ThermalState::Nominal, false).unwrap();
+        assert_eq!(g.reserved_cpu(), 6);
+        // A third would need 3 more, with only 1 left.
+        assert_eq!(
+            g.admit(cost, 2, ThermalState::Nominal, false),
+            Err(DenyReason::Cpu)
+        );
+        g.release(&a);
+        assert_eq!(g.reserved_cpu(), 3);
+    }
+
+    #[test]
+    fn long_audio_costs_more_memory() {
+        let catalog =
+            oas_catalog::Catalog::from_json(include_str!("../../../catalog/models.v1.json"))
+                .unwrap();
+        let model = catalog.get("whisper-tiny").unwrap();
+        let unknown = JobCost::for_model(model, None, false).mem_bytes;
+        let minute = JobCost::for_model(model, Some(1), false).mem_bytes;
+        let hour = JobCost::for_model(model, Some(3_600_000), false).mem_bytes;
+        assert_eq!(unknown, minute);
+        assert_eq!(hour - minute, 59 * model.per_minute_audio_bytes);
+    }
+
+    #[test]
+    fn hard_cap_follows_total_ram() {
+        assert_eq!(hard_cap(16 * GIB, 4 * GIB), 4);
+        assert_eq!(hard_cap(GIB, 4 * GIB), 1);
+    }
+
+    #[test]
+    fn auto_mode_table() {
+        const MS: u64 = AutoConcurrency::RAISE_INTERVAL_MS;
+        // (saturated, fits, cpu%, max_safe, expected target from 1, at t=MS)
+        let cases = [
+            (true, true, 20.0, 4, 2),  // room everywhere: raise
+            (false, true, 20.0, 4, 1), // queue not saturating: hold
+            (true, false, 20.0, 4, 1), // next job does not fit: hold
+            (true, true, 90.0, 4, 1),  // CPU busy: hold
+            (true, true, 20.0, 1, 1),  // already at max safe: hold
+        ];
+        for (sat, fits, cpu, max, want) in cases {
+            let mut a = AutoConcurrency::new();
+            a.on_tick(MS, sat, fits, cpu, max);
+            assert_eq!(a.target(), want, "{sat} {fits} {cpu} {max}");
+        }
+    }
+
+    #[test]
+    fn auto_mode_raises_slowly_and_sheds_fast() {
+        const MS: u64 = AutoConcurrency::RAISE_INTERVAL_MS;
+        let mut a = AutoConcurrency::new();
+        a.on_tick(MS, true, true, 10.0, 8);
+        a.on_tick(MS + 1, true, true, 10.0, 8); // too soon
+        assert_eq!(a.target(), 2);
+        a.on_tick(2 * MS, true, true, 10.0, 8);
+        assert_eq!(a.target(), 3);
+        a.on_pressure(2 * MS);
+        assert_eq!(a.target(), 2);
+        a.on_tick(2 * MS + 1, true, true, 10.0, 1); // machine got tighter
+        assert_eq!(a.target(), 1);
+        a.on_pressure(3 * MS);
+        assert_eq!(a.target(), 1); // never below one
     }
 
     #[test]
@@ -362,9 +543,34 @@ mod tests {
             let b = budgets(16, 32, 0);
             let mut g = Governor::new(b);
             for _ in 0..attempts {
-                let _ = g.admit(JobCost { mem_bytes: per * GIB, gpu: false }, ThermalState::Nominal, false);
+                let _ = g.admit(JobCost { mem_bytes: per * GIB, gpu: false }, 8, ThermalState::Nominal, false);
             }
             prop_assert!(g.reserved_mem() <= b.mem_budget);
+        }
+
+        // Any admit/release order holds the budgets and ends with nothing held.
+        #[test]
+        fn reservations_balance_on_every_path(
+            ops in proptest::collection::vec((any::<bool>(), 1u32..8), 0..60)
+        ) {
+            let b = budgets(32, 16, 1);
+            let mut g = Governor::new(b);
+            let mut held = Vec::new();
+            for (gpu, target) in ops {
+                let cost = JobCost { mem_bytes: 2 * GIB, gpu };
+                if let Ok(r) = g.admit(cost, target, ThermalState::Nominal, false) {
+                    held.push(r);
+                } else if let Some(r) = held.pop() {
+                    g.release(&r);
+                }
+                prop_assert!(g.reserved_mem() <= b.mem_budget);
+                prop_assert!(g.reserved_cpu() <= b.cpu_budget);
+            }
+            for r in held {
+                g.release(&r);
+            }
+            prop_assert_eq!(g.reserved_mem(), 0);
+            prop_assert_eq!(g.reserved_cpu(), 0);
         }
     }
 }

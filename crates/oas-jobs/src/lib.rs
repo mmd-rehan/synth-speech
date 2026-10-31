@@ -5,12 +5,25 @@
 #![forbid(unsafe_code)]
 
 pub mod governor;
+pub mod manager;
 pub mod schedule;
 pub mod watchdog;
+pub mod worker;
 
-pub use governor::{Budgets, DenyReason, Gauge, GaugeLevel, Governor, JobCost, Reservation};
+pub use governor::{
+    gauge, hard_cap, safety_reserve, AutoConcurrency, Budgets, DenyReason, Gauge, GaugeLevel,
+    Governor, JobCost, Reservation,
+};
+pub use manager::{
+    Clock, GovernorStatus, GovernorWarning, JobEvents, JobManager, JobProgress, JobRequest,
+    JobSegment, Machine, ManagerDeps, ParallelMode, Signals, SystemClock,
+};
 pub use schedule::{pick_next, queue_eta_secs};
-pub use watchdog::{WatchdogAction, WatchdogConfig};
+pub use watchdog::{WarningReason, WatchdogAction, WatchdogConfig};
+pub use worker::{
+    probe_worker, ProcessSpawner, WorkerEvent, WorkerEventKind, WorkerExit, WorkerHandle,
+    WorkerRegistry, WorkerSink, WorkerSpawner,
+};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -27,6 +40,50 @@ pub enum Priority {
     High,
 }
 
+impl Priority {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Priority::Low => "low",
+            Priority::Normal => "normal",
+            Priority::High => "high",
+        }
+    }
+
+    /// Parse a stored value; anything unknown is treated as normal.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "low" => Priority::Low,
+            "high" => Priority::High,
+            _ => Priority::Normal,
+        }
+    }
+}
+
+/// Who paused a job. Only the governor's own pauses resume by themselves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum PauseOrigin {
+    User,
+    Governor,
+}
+
+impl PauseOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PauseOrigin::User => "user",
+            PauseOrigin::Governor => "governor",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "user" => Some(PauseOrigin::User),
+            "governor" => Some(PauseOrigin::Governor),
+            _ => None,
+        }
+    }
+}
+
 /// Lifecycle state of a job.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]
@@ -41,6 +98,32 @@ pub enum JobState {
 }
 
 impl JobState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JobState::Queued => "queued",
+            JobState::Starting => "starting",
+            JobState::Running => "running",
+            JobState::Paused => "paused",
+            JobState::Completed => "completed",
+            JobState::Failed => "failed",
+            JobState::Cancelled => "cancelled",
+        }
+    }
+
+    /// Parse a stored value; `None` if it is unknown.
+    pub fn parse(s: &str) -> Option<Self> {
+        Some(match s {
+            "queued" => JobState::Queued,
+            "starting" => JobState::Starting,
+            "running" => JobState::Running,
+            "paused" => JobState::Paused,
+            "completed" => JobState::Completed,
+            "failed" => JobState::Failed,
+            "cancelled" => JobState::Cancelled,
+            _ => return None,
+        })
+    }
+
     /// Whether this state holds a governor reservation (occupies resources).
     pub fn is_active(self) -> bool {
         matches!(self, JobState::Starting | JobState::Running)
@@ -66,12 +149,12 @@ impl JobState {
                 | (Starting, Running)
                 | (Starting, Failed)
                 | (Starting, Cancelled)
+                | (Starting, Paused)
                 | (Running, Completed)
                 | (Running, Failed)
                 | (Running, Cancelled)
                 | (Running, Paused)
                 | (Paused, Queued)
-                | (Paused, Running)
                 | (Paused, Cancelled)
                 | (Paused, Failed)
                 // Retry from a finished-but-not-completed state.
@@ -82,13 +165,28 @@ impl JobState {
 }
 
 /// A transcription job.
+///
+/// Pausing stops the worker: that is the only way to give the memory back, and
+/// no OS-independent way exists to suspend native inference. Stored segments
+/// are kept, and resuming continues from the end of the last one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct Job {
     pub id: String,
     pub model_id: String,
     pub input_path: String,
+    /// Audio length once known.
+    #[specta(type = Option<f64>)]
+    pub duration_ms: Option<u64>,
     pub priority: Priority,
+    /// Position within a priority; lower runs first. Drag to reorder sets this.
+    #[specta(type = f64)]
+    pub rank: i64,
     pub state: JobState,
+    /// Set while `Paused`.
+    pub pause_origin: Option<PauseOrigin>,
+    /// Why a queued job is not running yet (not persisted).
+    pub wait_reason: Option<String>,
+    /// Whole-job progress in \[0, 1].
     pub progress: f32,
     #[serde(default)]
     pub language: Option<String>,
@@ -104,7 +202,9 @@ pub struct Job {
     pub finished_at_ms: Option<u64>,
     pub error_code: Option<String>,
     pub error_message: Option<String>,
-    pub retries: u8,
+    pub retries: u32,
+    /// Measured real-time factor, once finished.
+    pub rtf: Option<f32>,
 }
 
 impl Job {
@@ -141,7 +241,8 @@ mod tests {
             (Starting, Running),
             (Running, Completed),
             (Running, Paused),
-            (Paused, Running),
+            (Starting, Paused),
+            (Paused, Queued),
             (Running, Cancelled),
             (Failed, Queued),
             (Cancelled, Queued),
@@ -158,6 +259,7 @@ mod tests {
             (Completed, Running),
             (Completed, Queued),
             (Queued, Running), // must pass through Starting
+            (Paused, Running), // a resumed job gets a new worker via Queued
             (Queued, Completed),
             (Cancelled, Running),
             (Running, Starting),
@@ -173,8 +275,12 @@ mod tests {
             id: "j".into(),
             model_id: "whisper-tiny".into(),
             input_path: "/a.wav".into(),
+            duration_ms: None,
             priority: Priority::Normal,
+            rank: 1,
             state: JobState::Queued,
+            pause_origin: None,
+            wait_reason: None,
             progress: 0.0,
             language: None,
             translate: false,
@@ -185,11 +291,29 @@ mod tests {
             error_code: None,
             error_message: None,
             retries: 0,
+            rtf: None,
         };
         assert!(job.try_transition(JobState::Starting));
         assert_eq!(job.state, JobState::Starting);
         assert!(!job.try_transition(JobState::Completed)); // Starting -> Completed illegal
         assert_eq!(job.state, JobState::Starting);
+    }
+
+    #[test]
+    fn stored_values_roundtrip() {
+        use JobState::*;
+        for s in [
+            Queued, Starting, Running, Paused, Completed, Failed, Cancelled,
+        ] {
+            assert_eq!(JobState::parse(s.as_str()), Some(s));
+        }
+        assert_eq!(JobState::parse("nonsense"), None);
+        for p in [Priority::Low, Priority::Normal, Priority::High] {
+            assert_eq!(Priority::parse(p.as_str()), p);
+        }
+        for o in [PauseOrigin::User, PauseOrigin::Governor] {
+            assert_eq!(PauseOrigin::parse(o.as_str()), Some(o));
+        }
     }
 
     #[test]

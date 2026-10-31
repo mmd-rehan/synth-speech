@@ -2,6 +2,38 @@
 //! protective action to take. Pure so it can be tested with synthetic traces.
 
 use oas_hardware::ThermalState;
+use serde::{Deserialize, Serialize};
+use specta::Type;
+
+/// A structured reason for a governor warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WarningReason {
+    LowMemory,
+    SwapGrowth,
+    ThermalSerious,
+    ThermalCritical,
+    WorkerOutOfMemory,
+    GpuFallback,
+    Recovered,
+}
+
+impl WarningReason {
+    /// The plain message shown to the user.
+    pub fn message(self) -> &'static str {
+        match self {
+            WarningReason::LowMemory => "Paused to protect your computer: memory is low.",
+            WarningReason::SwapGrowth => "Your computer is running out of memory.",
+            WarningReason::ThermalSerious => "Your computer is hot, so only one job will run.",
+            WarningReason::ThermalCritical => "Your computer is too hot, so all jobs are paused.",
+            WarningReason::WorkerOutOfMemory => {
+                "A job ran out of memory. Try a smaller model or fewer jobs at once."
+            }
+            WarningReason::GpuFallback => "GPU unavailable, used CPU instead. This will be slower.",
+            WarningReason::Recovered => "Your computer has recovered, so paused jobs are resuming.",
+        }
+    }
+}
 
 /// Watchdog thresholds.
 #[derive(Debug, Clone, Copy)]
@@ -25,11 +57,11 @@ impl Default for WatchdogConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatchdogAction {
     /// Pause the newest running job and warn.
-    PauseNewest(&'static str),
+    PauseNewest(WarningReason),
     /// Reduce running jobs to one (thermal Serious).
-    ReduceToOne(&'static str),
+    ReduceToOne(WarningReason),
     /// Pause everything (thermal Critical).
-    PauseAll(&'static str),
+    PauseAll(WarningReason),
 }
 
 /// Decide what to do given the current signals and recent swap growth.
@@ -42,21 +74,17 @@ pub fn decide(
     let mut actions = Vec::new();
 
     if available_ram < config.safety_reserve / 2 {
-        actions.push(WatchdogAction::PauseNewest(
-            "Your computer is very low on memory",
-        ));
+        actions.push(WatchdogAction::PauseNewest(WarningReason::LowMemory));
     }
     if swap_growth_over_window > config.swap_growth_limit {
-        actions.push(WatchdogAction::PauseNewest(
-            "Your computer is running out of memory",
-        ));
+        actions.push(WatchdogAction::PauseNewest(WarningReason::SwapGrowth));
     }
     match thermal {
-        ThermalState::Serious => actions.push(WatchdogAction::ReduceToOne(
-            "The machine is hot; reducing to one job",
-        )),
+        ThermalState::Serious => {
+            actions.push(WatchdogAction::ReduceToOne(WarningReason::ThermalSerious))
+        }
         ThermalState::Critical => {
-            actions.push(WatchdogAction::PauseAll("The machine is too hot; pausing"))
+            actions.push(WatchdogAction::PauseAll(WarningReason::ThermalCritical))
         }
         _ => {}
     }
@@ -105,15 +133,13 @@ mod tests {
     #[test]
     fn thermal_serious_reduces_and_critical_pauses_all() {
         let serious = decide(8 * GB, 0, ThermalState::Serious, &WatchdogConfig::default());
-        assert!(serious.contains(&WatchdogAction::ReduceToOne(
-            "The machine is hot; reducing to one job"
-        )));
+        assert!(serious.contains(&WatchdogAction::ReduceToOne(WarningReason::ThermalSerious)));
         let critical = decide(
             8 * GB,
             0,
             ThermalState::Critical,
             &WatchdogConfig::default(),
         );
-        assert!(critical.contains(&WatchdogAction::PauseAll("The machine is too hot; pausing")));
+        assert!(critical.contains(&WatchdogAction::PauseAll(WarningReason::ThermalCritical)));
     }
 }

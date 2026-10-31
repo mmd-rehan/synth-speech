@@ -2,9 +2,9 @@
 
 use crate::Priority;
 
-/// Pick the next job to start: highest priority, then earliest created.
-/// `candidates` is `(id, priority, created_at_ms)`.
-pub fn pick_next(candidates: &[(String, Priority, u64)]) -> Option<String> {
+/// Pick the next job to start: highest priority, then lowest queue rank.
+/// `candidates` is `(id, priority, rank)`.
+pub fn pick_next(candidates: &[(String, Priority, i64)]) -> Option<String> {
     candidates
         .iter()
         .max_by(|a, b| a.1.cmp(&b.1).then(b.2.cmp(&a.2)))

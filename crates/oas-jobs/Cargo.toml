@@ -12,8 +12,22 @@ description = "Job queue, scheduler, and resource governor."
 oas-core.workspace = true
 oas-hardware.workspace = true
 oas-catalog.workspace = true
+oas-protocol.workspace = true
+oas-storage.workspace = true
+oas-engine.workspace = true
+oas-export.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
 specta = { workspace = true, features = ["derive"] }
+
+# Stands in for `oas-worker` in the soak and chaos tests: the real protocol over
+# real processes, with no model. Never bundled with the app.
+[[bin]]
+name = "oas-fake-worker"
+path = "src/bin/fake_worker.rs"
+test = false
 
 [dev-dependencies]
 proptest = "1"
+tempfile = "3"

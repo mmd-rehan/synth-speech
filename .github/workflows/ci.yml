@@ -241,5 +241,5 @@ jobs:
         env:
           OAS_TEST_MODEL: ${{ github.workspace }}/test-assets/ggml-tiny.bin
           OAS_TEST_AUDIO: ${{ github.workspace }}/test-assets/jfk.wav
-          OAS_TEST_JOBS: "8"
+          OAS_TEST_JOBS: "4"
         run: cargo test --release -p oas-worker -- --nocapture

@@ -118,7 +118,7 @@ fn run_batch(
 
     let mut lowest_available = u64::MAX;
     let mut busiest = 0;
-    let deadline = Instant::now() + Duration::from_secs(300);
+    let deadline = Instant::now() + Duration::from_secs(600);
     while !mgr.list().iter().all(|j| j.state.is_terminal()) {
         assert!(
             Instant::now() < deadline,

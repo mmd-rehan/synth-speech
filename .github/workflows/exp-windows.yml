@@ -1,0 +1,43 @@
+name: Windows threading experiment
+on:
+  push:
+    branches: ["exp/windows-threads"]
+jobs:
+  measure:
+    name: Windows ${{ matrix.features || 'default' }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ["", "openmp"]
+    env:
+      MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+      AUDIO_URL: https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.7.6/samples/jfk.wav
+      GGML_NATIVE: "OFF"
+      GGML_AVX: "ON"
+      GGML_AVX2: "ON"
+      GGML_FMA: "ON"
+      GGML_F16C: "ON"
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: exp-${{ matrix.features }}
+      - shell: bash
+        run: |
+          mkdir -p test-assets
+          curl -fsSL -o test-assets/ggml-tiny.bin "$MODEL_URL"
+          curl -fsSL -o test-assets/jfk.wav "$AUDIO_URL"
+      - name: Measure
+        shell: bash
+        env:
+          OAS_TEST_MODEL: ${{ github.workspace }}/test-assets/ggml-tiny.bin
+          OAS_TEST_AUDIO: ${{ github.workspace }}/test-assets/jfk.wav
+          OAS_TEST_JOBS: "4"
+        run: |
+          flags=""
+          [ -n "${{ matrix.features }}" ] && flags="--features ${{ matrix.features }}"
+          cargo test --release -p oas-worker $flags --test queue -- --nocapture

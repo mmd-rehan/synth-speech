@@ -22,6 +22,36 @@ const MIGRATIONS: &[&str] = &[
         sha256          TEXT    NOT NULL,
         installed_at_ms INTEGER NOT NULL
     );",
+    // V3: the job queue and incrementally stored transcripts.
+    "CREATE TABLE jobs (
+        id                TEXT    PRIMARY KEY,
+        input_path        TEXT    NOT NULL,
+        input_duration_ms INTEGER,
+        model_id          TEXT    NOT NULL,
+        options_json      TEXT    NOT NULL,
+        priority          TEXT    NOT NULL,
+        rank              INTEGER NOT NULL,
+        state             TEXT    NOT NULL,
+        pause_origin      TEXT,
+        progress          REAL    NOT NULL DEFAULT 0,
+        retries           INTEGER NOT NULL DEFAULT 0,
+        error_code        TEXT,
+        error_message     TEXT,
+        metrics_json      TEXT,
+        created_at_ms     INTEGER NOT NULL,
+        started_at_ms     INTEGER,
+        finished_at_ms    INTEGER
+    );
+    CREATE INDEX idx_jobs_state ON jobs(state);
+    CREATE TABLE segments (
+        job_id     TEXT    NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        idx        INTEGER NOT NULL,
+        start_ms   INTEGER NOT NULL,
+        end_ms     INTEGER NOT NULL,
+        text       TEXT    NOT NULL,
+        words_json TEXT,
+        PRIMARY KEY (job_id, idx)
+    );",
 ];
 
 /// The schema version after all migrations are applied.

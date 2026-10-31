@@ -23,14 +23,29 @@ many transcription jobs in parallel without freezing or overheating your machine
 - **Cross-platform.** macOS and Windows are first-class; Linux is best-effort.
 
 > **Status:** pre-release. Transcription, the job queue, and Metal acceleration work.
-> There are no signed installers yet, so for now you build it yourself.
+
+## Install
+
+Download the installer for your computer from
+[Releases](https://github.com/mmd-rehan/synth-speech/releases).
+
+The installers are not signed by Apple or Microsoft, so your computer warns you
+the first time. The source code is public, and each release lists a SHA-256
+checksum for every file.
+
+- **Mac:** open the app and close the warning, then go to **System Settings >
+  Privacy & Security** and click **Open Anyway**. If macOS says the app is
+  damaged, run `xattr -dr com.apple.quarantine "/Applications/SynthSpeech.app"`.
+- **Windows:** click **More info**, then **Run anyway**. If Smart App Control is
+  on, Windows blocks the installer and offers no way to allow it.
+- **Linux:** use the AppImage, `.deb` or `.rpm`.
 
 ## What your computer needs
 
 | | Minimum | Good |
 |---|---|---|
 | Memory | 8 GB | 16 GB or more |
-| Mac | Apple Silicon | Any M-series chip, which uses the GPU |
+| Mac | macOS 13, Apple Silicon or Intel | Any M-series chip, which uses the GPU |
 | Windows or Linux | x64 CPU with AVX2 (most from 2013 on) | 8 or more CPU cores |
 
 Windows and Linux run on the CPU today. Windows is currently much slower than

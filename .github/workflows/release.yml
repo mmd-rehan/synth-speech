@@ -1,8 +1,8 @@
 name: Release
 
 # Runs when a version tag is pushed, and leaves a draft for a person to publish.
-# Each signing input is optional: without it the build still works, unsigned, and
-# the draft must not be published as a final release.
+# Builds are not signed by Apple or Microsoft. macOS builds carry a free ad-hoc
+# signature, and packaging/release-notes.md tells people how to open them.
 on:
   push:
     tags: ["v*"]
@@ -12,6 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Matches bundle.macOS.minimumSystemVersion in tauri.conf.json.
+  MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 jobs:
   build:
@@ -22,6 +24,8 @@ jobs:
       matrix:
         include:
           - os: macos-15
+            args: --bundles dmg
+          - os: macos-15-intel
             args: --bundles dmg
           - os: windows-latest
             args: --bundles nsis,msi
@@ -84,13 +88,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS signing and notarization.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
@@ -103,6 +100,7 @@ jobs:
     name: Licenses and SBOM
     runs-on: ubuntu-22.04
     needs: build
+    if: ${{ !cancelled() }}
     steps:
       - uses: actions/checkout@v4
 
@@ -123,3 +121,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "$GITHUB_REF_NAME" THIRD_PARTY_LICENSES apps/desktop/src-tauri/sbom.json --clobber
+
+      - name: Add checksums and install notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir release-files
+          gh release download "$GITHUB_REF_NAME" --dir release-files
+          (cd release-files && sha256sum * > ../SHA256SUMS)
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS --clobber
+          gh release edit "$GITHUB_REF_NAME" --notes-file packaging/release-notes.md

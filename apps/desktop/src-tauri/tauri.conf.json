@@ -51,7 +51,8 @@
     "copyright": "Copyright (c) SynthSpeech contributors",
     "license": "MIT",
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
     },
     "windows": {
       "webviewInstallMode": {

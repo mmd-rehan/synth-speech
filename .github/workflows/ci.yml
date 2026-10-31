@@ -25,7 +25,7 @@ jobs:
         # Intel macOS (macos-13) is validated at release time (see docs 09/10):
         # GitHub's free Intel runners are heavily queued and were repeatedly
         # cancelled by cancel-in-progress before they could start.
-        os: [macos-14, windows-latest, ubuntu-22.04]
+        os: [macos-15, windows-latest, ubuntu-22.04]
 
     steps:
       - uses: actions/checkout@v4
@@ -177,7 +177,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest, ubuntu-22.04]
+        os: [macos-15, windows-latest, ubuntu-22.04]
     env:
       MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
       MODEL_SHA256: be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21

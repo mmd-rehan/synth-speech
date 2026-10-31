@@ -21,8 +21,8 @@ pub use manager::{
 pub use schedule::{pick_next, queue_eta_secs};
 pub use watchdog::{WarningReason, WatchdogAction, WatchdogConfig};
 pub use worker::{
-    probe_worker, ProcessSpawner, WorkerEvent, WorkerEventKind, WorkerExit, WorkerHandle,
-    WorkerRegistry, WorkerSink, WorkerSpawner,
+    probe_durations, probe_durations_within, probe_worker, ProcessSpawner, WorkerEvent,
+    WorkerEventKind, WorkerExit, WorkerHandle, WorkerRegistry, WorkerSink, WorkerSpawner,
 };
 
 use serde::{Deserialize, Serialize};

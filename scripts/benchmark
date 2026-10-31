@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Run every given model on a clip with a worker binary and write a CSV.
+
+    scripts/benchmark --worker target/release/oas-worker --clip clip.wav \
+        --out results.csv ggml-tiny.bin ggml-base.bin
+
+Each model runs on the CPU and, with --gpu, on the GPU. The first run is
+dropped because it includes one-time costs such as compiling GPU shaders.
+"""
+
+import argparse
+import csv
+import json
+import os
+import subprocess
+import time
+
+
+def run(worker, clip, model, use_gpu, threads):
+    start = {
+        "v": 1,
+        "type": "start",
+        "job_id": "benchmark",
+        "audio_path": clip,
+        "model_path": model,
+        "engine": "whisper_cpp",
+        "limits": {"max_threads": threads, "mem_budget_mib": 8192, "use_gpu": use_gpu},
+    }
+    process = subprocess.Popen(
+        [worker],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    process.stdin.write(json.dumps(start) + "\n")
+    process.stdin.flush()
+    began = time.monotonic()
+    result = {"audio_sec": 0.0, "rtf": None, "segments": 0, "error": None}
+    for line in process.stdout:
+        message = json.loads(line)
+        kind = message["type"]
+        if kind == "audio":
+            result["audio_sec"] = message["duration_sec"]
+        elif kind == "segment":
+            result["segments"] += 1
+        elif kind == "metrics":
+            result["rtf"] = message["rtf"]
+        elif kind == "error":
+            result["error"] = message["error"]["message"]
+        if kind in ("done", "error"):
+            break
+    result["wall_sec"] = time.monotonic() - began
+    process.stdin.close()
+    process.wait()
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("models", nargs="+")
+    parser.add_argument("--worker", required=True)
+    parser.add_argument("--clip", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--gpu", action="store_true")
+    parser.add_argument("--runs", type=int, default=3)
+    parser.add_argument("--threads", type=int, default=min(8, os.cpu_count() or 1))
+    args = parser.parse_args()
+
+    devices = [False, True] if args.gpu else [False]
+    with open(args.out, "w", newline="") as out:
+        table = csv.writer(out)
+        table.writerow(
+            ["model", "device", "threads", "audio_sec", "wall_sec", "rtf", "segments"]
+        )
+        for model in args.models:
+            for use_gpu in devices:
+                run(args.worker, args.clip, model, use_gpu, args.threads)
+                results = [
+                    run(args.worker, args.clip, model, use_gpu, args.threads)
+                    for _ in range(args.runs)
+                ]
+                failed = next((r["error"] for r in results if r["error"]), None)
+                if failed:
+                    raise SystemExit(f"{model}: {failed}")
+                results.sort(key=lambda r: r["rtf"])
+                middle = results[len(results) // 2]
+                row = [
+                    os.path.basename(model),
+                    "gpu" if use_gpu else "cpu",
+                    args.threads,
+                    f"{middle['audio_sec']:.1f}",
+                    f"{middle['wall_sec']:.2f}",
+                    f"{middle['rtf']:.4f}",
+                    middle["segments"],
+                ]
+                table.writerow(row)
+                print(*row, sep=", ")
+
+
+if __name__ == "__main__":
+    main()

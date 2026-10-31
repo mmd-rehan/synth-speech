@@ -81,6 +81,46 @@ jobs:
         shell: bash
         run: bash scripts/check.sh
 
+  # Proves the GPU worker compiles. It needs a real GPU to run, so nothing runs it
+  # here, and it is not bundled until it has been tested on one.
+  vulkan-worker:
+    name: Build Vulkan worker (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libclang-dev
+
+      - name: Point bindgen at libclang (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Install the Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: vulkan-v1
+
+      - name: Build
+        run: cargo build --release -p oas-worker --features vulkan
+
   # The real UI in a real browser, against a mocked IPC layer.
   e2e:
     name: End to end (UI)
@@ -158,6 +198,8 @@ jobs:
             echo "CMAKE_GENERATOR=Ninja"
             echo "CMAKE_C_COMPILER=clang-cl"
             echo "CMAKE_CXX_COMPILER=clang-cl"
+            # Git Bash puts its own `link` ahead of the MSVC linker on PATH.
+            echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link"
           } >> "$GITHUB_ENV"
 
       - name: Target AVX2 as shipped builds do

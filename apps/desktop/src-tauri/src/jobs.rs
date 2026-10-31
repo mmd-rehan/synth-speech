@@ -188,12 +188,27 @@ pub async fn jobs_create(
     jobs: State<'_, JobManager>,
     request: JobRequest,
 ) -> Result<Vec<Job>, String> {
-    let durations = request.paths.iter().map(|p| probe_duration_ms(p)).collect();
+    let durations = durations_ms(&request.paths).await;
     jobs.create(request, durations).map_err(user_error)
 }
 
-fn probe_duration_ms(path: &str) -> Option<u64> {
-    oas_audio::probe_duration_sec(std::path::Path::new(path)).map(|s| (s * 1000.0) as u64)
+/// Audio lengths, read in a worker: media is never parsed in this process.
+async fn durations_secs(paths: Vec<String>) -> Vec<Option<f64>> {
+    let unknown = vec![None; paths.len()];
+    let Ok(exe) = worker_exe() else {
+        return unknown;
+    };
+    tauri::async_runtime::spawn_blocking(move || oas_jobs::probe_durations(&exe, &paths))
+        .await
+        .unwrap_or(unknown)
+}
+
+async fn durations_ms(paths: &[String]) -> Vec<Option<u64>> {
+    durations_secs(paths.to_vec())
+        .await
+        .into_iter()
+        .map(|s| s.map(|s| (s * 1000.0) as u64))
+        .collect()
 }
 
 /// Audio lengths in seconds, for the time estimate before adding files. `None`
@@ -201,10 +216,7 @@ fn probe_duration_ms(path: &str) -> Option<u64> {
 #[tauri::command]
 #[specta::specta]
 pub async fn jobs_probe_durations(paths: Vec<String>) -> Vec<Option<f64>> {
-    paths
-        .iter()
-        .map(|p| probe_duration_ms(p).map(|ms| ms as f64 / 1000.0))
-        .collect()
+    durations_secs(paths).await
 }
 
 /// "Test speed": queue the bundled clip with this model. The finished job is
@@ -224,7 +236,7 @@ pub async fn models_test_speed(
         )
         .map_err(|e| format!("could not find the test clip: {e}"))?;
     let path = clip.to_string_lossy().into_owned();
-    let durations = vec![probe_duration_ms(&path)];
+    let durations = durations_ms(std::slice::from_ref(&path)).await;
     let request = JobRequest {
         paths: vec![path],
         model_id,

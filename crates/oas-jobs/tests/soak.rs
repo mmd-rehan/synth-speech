@@ -376,6 +376,33 @@ fn a_missing_worker_binary_fails_the_job_with_a_clear_error() {
 }
 
 #[test]
+fn durations_come_from_a_worker() {
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_oas-fake-worker"));
+    let paths = ["a é.wav".to_string(), "b.wav".to_string()];
+    assert_eq!(
+        oas_jobs::probe_durations(&exe, &paths),
+        [Some(12.5), Some(12.5)]
+    );
+}
+
+#[test]
+fn a_stalled_probe_is_killed_and_leaves_durations_unknown() {
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_oas-fake-worker"));
+    let paths = ["hang.wav".to_string()];
+    let started = Instant::now();
+    let got = oas_jobs::probe_durations_within(&exe, &paths, Duration::from_millis(200));
+    assert_eq!(got, [None]);
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+fn a_missing_worker_leaves_durations_unknown() {
+    let paths = ["a.wav".to_string()];
+    let exe = PathBuf::from("no-such-worker");
+    assert_eq!(oas_jobs::probe_durations(&exe, &paths), [None]);
+}
+
+#[test]
 fn probing_the_worker_reads_its_version() {
     let exe = PathBuf::from(env!("CARGO_BIN_EXE_oas-fake-worker"));
     assert_eq!(oas_jobs::probe_worker(exe).unwrap(), "fake");

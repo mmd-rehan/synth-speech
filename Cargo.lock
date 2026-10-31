@@ -2566,7 +2566,6 @@ dependencies = [
 name = "oas-desktop"
 version = "0.1.0"
 dependencies = [
- "oas-audio",
  "oas-catalog",
  "oas-core",
  "oas-download",

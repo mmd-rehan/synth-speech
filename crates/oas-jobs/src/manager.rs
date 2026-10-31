@@ -1101,6 +1101,8 @@ impl Core {
     fn on_message(&mut self, id: &str, message: WorkerToCore) {
         match message {
             WorkerToCore::Ready { .. } => self.on_ready(id),
+            // Only sent in reply to a probe, which never goes through a job.
+            WorkerToCore::Durations { .. } => {}
             WorkerToCore::Audio { duration_sec } => {
                 if let Ok(job) = self.job_mut(id) {
                     job.duration_ms = Some((duration_sec.max(0.0) * 1000.0) as u64);

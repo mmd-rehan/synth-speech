@@ -43,7 +43,6 @@ oas-fit.workspace = true
 oas-download.workspace = true
 oas-storage.workspace = true
 oas-jobs.workspace = true
-oas-audio.workspace = true
 serde.workspace = true
 tracing.workspace = true
 tokio = { version = "1", features = ["sync"] }

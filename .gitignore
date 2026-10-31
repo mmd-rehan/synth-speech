@@ -47,6 +47,8 @@ dist/
 /models/
 /catalog/cache/
 *.wav
+# The bundled clip for "Test speed", 11 s and required at runtime.
+!apps/desktop/src-tauri/resources/speed-test-clip.wav
 *.mp3
 *.flac
 *.m4a

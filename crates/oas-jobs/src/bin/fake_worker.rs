@@ -49,6 +49,15 @@ fn main() {
                     let _ = tx.send((audio_path, resume_from_sec, limits.use_gpu));
                 }
                 Ok(CoreToWorker::Cancel) => flag.store(true, Ordering::SeqCst),
+                Ok(CoreToWorker::Probe { paths }) if paths.iter().any(|p| p.contains("hang")) => {
+                    // Never answers, as a parser stuck on a hostile file would.
+                }
+                Ok(CoreToWorker::Probe { paths }) => {
+                    emit(WorkerToCore::Durations {
+                        seconds: paths.iter().map(|_| Some(12.5)).collect(),
+                    });
+                    std::process::exit(0);
+                }
                 Err(_) => {}
             }
         }

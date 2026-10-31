@@ -47,6 +47,12 @@ fn emit_error(err: &OasError) {
     });
 }
 
+/// What the worker was asked to do.
+enum Work {
+    Job(StartRequest),
+    Probe(Vec<String>),
+}
+
 /// Everything a `start` message asks for.
 struct StartRequest {
     audio_path: String,
@@ -59,11 +65,7 @@ struct StartRequest {
 
 /// Read stdin until it closes: route `cancel` to the token and `start` to the
 /// main thread. If stdin closes while a job runs, the core died, so exit now.
-fn spawn_stdin_reader(
-    cancel: CancelToken,
-    job_running: Arc<AtomicBool>,
-    starts: mpsc::Sender<StartRequest>,
-) {
+fn spawn_stdin_reader(cancel: CancelToken, job_running: Arc<AtomicBool>, work: mpsc::Sender<Work>) {
     std::thread::spawn(move || {
         let stdin = std::io::stdin();
         for line in stdin.lock().lines() {
@@ -83,14 +85,17 @@ fn spawn_stdin_reader(
                         ..
                     } => {
                         job_running.store(true, Ordering::SeqCst);
-                        let _ = starts.send(StartRequest {
+                        let _ = work.send(Work::Job(StartRequest {
                             audio_path,
                             model_path,
                             engine,
                             options,
                             limits,
                             resume_from_sec,
-                        });
+                        }));
+                    }
+                    CoreToWorker::Probe { paths } => {
+                        let _ = work.send(Work::Probe(paths));
                     }
                     CoreToWorker::Cancel => cancel.cancel(),
                 },
@@ -100,7 +105,7 @@ fn spawn_stdin_reader(
         if job_running.load(Ordering::SeqCst) {
             std::process::exit(0);
         }
-        // Idle worker: dropping `starts` lets main return normally.
+        // Idle worker: dropping `work` lets main return normally.
     });
 }
 
@@ -113,9 +118,16 @@ fn main() -> ExitCode {
     let (tx, rx) = mpsc::channel();
     spawn_stdin_reader(cancel.clone(), Arc::new(AtomicBool::new(false)), tx);
 
-    // One job per worker process; exit after it finishes.
-    if let Ok(request) = rx.recv() {
-        run_job(request, &cancel);
+    // One task per worker process; exit after it finishes.
+    match rx.recv() {
+        Ok(Work::Job(request)) => run_job(request, &cancel),
+        Ok(Work::Probe(paths)) => emit(WorkerToCore::Durations {
+            seconds: paths
+                .iter()
+                .map(|p| oas_audio::probe_duration_sec(&PathBuf::from(p)))
+                .collect(),
+        }),
+        Err(_) => {}
     }
     ExitCode::SUCCESS
 }

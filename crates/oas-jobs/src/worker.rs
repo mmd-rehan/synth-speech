@@ -255,6 +255,63 @@ impl WorkerHandle for ProcessHandle {
     }
 }
 
+/// Longest time a batch of files may take to probe.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Read audio lengths in a worker, so media is never parsed in the core
+/// process. A file that cannot be read gives `None`, and so does every file if
+/// the worker crashes or stalls: the lengths only refine estimates.
+pub fn probe_durations(exe: &PathBuf, paths: &[String]) -> Vec<Option<f64>> {
+    probe_durations_within(exe, paths, PROBE_TIMEOUT)
+}
+
+/// [`probe_durations`] with a chosen time limit.
+pub fn probe_durations_within(
+    exe: &PathBuf,
+    paths: &[String],
+    limit: Duration,
+) -> Vec<Option<f64>> {
+    let unknown = vec![None; paths.len()];
+    let Ok(mut child) = worker_command(exe).spawn() else {
+        return unknown;
+    };
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return unknown;
+    };
+
+    let request = CoreToWorker::Probe {
+        paths: paths.to_vec(),
+    };
+    let sent = Envelope::new(request)
+        .to_line()
+        .is_ok_and(|line| writeln!(stdin, "{line}").is_ok() && stdin.flush().is_ok());
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
+            if let Ok(env) = Envelope::<WorkerToCore>::from_line(&line) {
+                if let WorkerToCore::Durations { seconds } = env.msg {
+                    let _ = tx.send(seconds);
+                    return;
+                }
+            }
+        }
+    });
+
+    let answer = if sent {
+        rx.recv_timeout(limit).ok()
+    } else {
+        None
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    answer
+        .filter(|seconds| seconds.len() == paths.len())
+        .unwrap_or(unknown)
+}
+
 /// Start the worker, read its `ready` line, and return its version. Proves the
 /// bundled worker can run.
 pub fn probe_worker(exe: PathBuf) -> Result<String> {

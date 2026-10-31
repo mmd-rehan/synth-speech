@@ -79,6 +79,9 @@ pub enum CoreToWorker {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resume_from_sec: Option<f64>,
     },
+    /// Read the length of these files from their headers, reply with
+    /// `durations`, and exit. Media is only ever parsed in a worker.
+    Probe { paths: Vec<String> },
     /// Ask the worker to stop the current job and exit cleanly.
     Cancel,
 }
@@ -94,6 +97,8 @@ pub enum WorkerToCore {
     },
     /// The audio was decoded; its full length is now known.
     Audio { duration_sec: f64 },
+    /// Reply to `probe`, in the same order. `None` for an unreadable file.
+    Durations { seconds: Vec<Option<f64>> },
     /// Coarse progress update.
     Progress { pct: f32, stage: String },
     /// A finished transcript segment.

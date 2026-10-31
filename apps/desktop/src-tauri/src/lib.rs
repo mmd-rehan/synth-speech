@@ -3,19 +3,15 @@
 //! This crate wires the React UI to the Rust core over Tauri commands. All IPC
 //! types are generated into `../src/bindings.ts` by `tauri-specta`, so the
 //! TypeScript side never hand-copies a type.
-//!
-//! In M00 the surface is intentionally small: report the app version, and probe
-//! the `oas-worker` sidecar to prove the app can spawn it and read its `ready`
-//! line.
 
 mod catalog;
 mod downloads;
 mod hardware;
+mod jobs;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::Manager;
-use tauri_plugin_shell::ShellExt;
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 use oas_core::Paths;
@@ -40,40 +36,15 @@ fn app_version() -> AppInfo {
 }
 
 /// Spawn the `oas-worker` sidecar, read its first JSONL line, and return the
-/// reported worker version. Proves the sidecar mechanism end to end.
+/// reported worker version. Proves the bundled worker can run.
 #[tauri::command]
 #[specta::specta]
-async fn spawn_worker_probe(app: tauri::AppHandle) -> Result<String, String> {
-    let command = app
-        .shell()
-        .sidecar("oas-worker")
-        .map_err(|e| format!("could not locate the worker sidecar: {e}"))?;
-
-    let output = command
-        .output()
+async fn spawn_worker_probe() -> Result<String, String> {
+    let exe = jobs::worker_exe()?;
+    tauri::async_runtime::spawn_blocking(move || oas_jobs::probe_worker(exe))
         .await
-        .map_err(|e| format!("could not run the worker sidecar: {e}"))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "worker exited unsuccessfully (code {:?})",
-            output.status.code()
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let first_line = stdout
-        .lines()
-        .next()
-        .ok_or_else(|| "worker produced no output".to_string())?;
-
-    let envelope = oas_protocol::Envelope::<oas_protocol::WorkerToCore>::from_line(first_line)
-        .map_err(|e| e.user_message())?;
-
-    match envelope.msg {
-        oas_protocol::WorkerToCore::Ready { worker_version } => Ok(worker_version),
-        other => Err(format!("expected a ready message, got {other:?}")),
-    }
+        .map_err(|e| format!("the worker check stopped: {e}"))?
+        .map_err(|e| e.user_message())
 }
 
 /// Construct the `tauri-specta` builder shared by the running app and the
@@ -98,10 +69,32 @@ fn specta_builder() -> Builder<tauri::Wry> {
             downloads::models_delete,
             downloads::models_list_installed,
             downloads::models_import_file,
+            jobs::jobs_create,
+            jobs::jobs_list,
+            jobs::jobs_get,
+            jobs::jobs_segments,
+            jobs::jobs_pause,
+            jobs::jobs_resume,
+            jobs::jobs_cancel,
+            jobs::jobs_delete,
+            jobs::jobs_retry,
+            jobs::jobs_set_priority,
+            jobs::jobs_reorder,
+            jobs::jobs_pause_all,
+            jobs::jobs_resume_all,
+            jobs::jobs_clear_completed,
+            jobs::jobs_export,
+            jobs::governor_get_status,
+            jobs::governor_gauge,
+            jobs::governor_set_parallel,
         ])
         .events(collect_events![
             downloads::DownloadProgress,
-            downloads::DownloadState
+            downloads::DownloadState,
+            jobs::JobStateChanged,
+            jobs::JobProgressChanged,
+            jobs::JobSegmentsAdded,
+            jobs::GovernorWarned
         ])
 }
 
@@ -137,7 +130,6 @@ pub fn run() {
     export_bindings().expect("failed to export TypeScript bindings");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(builder.invoke_handler())
         .on_window_event(|window, event| {
@@ -166,6 +158,7 @@ pub fn run() {
             // Logging to the app data dir, then the database.
             let log_guard = oas_core::telemetry::init(&paths.logs_dir(), "oas-desktop");
             let db = oas_storage::Database::open(&paths.database_file())
+                .map(std::sync::Arc::new)
                 .map_err(|e| e.user_message())?;
 
             // The catalog is embedded at build time and validated on load.
@@ -174,7 +167,12 @@ pub fn run() {
                     .map_err(|e| e.user_message())?;
 
             app.manage(hardware::AppState::new(db, paths, catalog, log_guard));
-            downloads::reconcile(app.state::<hardware::AppState>().inner());
+            let state = app.state::<hardware::AppState>();
+            downloads::reconcile(state.inner());
+            let profile = hardware::current_profile(state.inner())?;
+            let jobs = jobs::create_manager(app.handle().clone(), state.inner(), profile)?;
+            jobs.start();
+            app.manage(jobs);
             hardware::spawn_usage_monitor(app.handle().clone());
             Ok(())
         })

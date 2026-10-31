@@ -9,7 +9,7 @@ export const commands = {
 	appVersion: () => __TAURI_INVOKE<AppInfo>("app_version"),
 	/**
 	 *  Spawn the `oas-worker` sidecar, read its first JSONL line, and return the
-	 *  reported worker version. Proves the sidecar mechanism end to end.
+	 *  reported worker version. Proves the bundled worker can run.
 	 */
 	spawnWorkerProbe: () => typedError<string, string>(__TAURI_INVOKE("spawn_worker_probe")),
 	/**  Return the cached machine profile, building and caching one on first use. */
@@ -55,12 +55,41 @@ export const commands = {
 	 *  install it if the checksum matches.
 	 */
 	modelsImportFile: (modelId: string, sourcePath: string) => typedError<null, string>(__TAURI_INVOKE("models_import_file", { modelId, sourcePath })),
+	/**  Add one job per file to the queue. */
+	jobsCreate: (request: JobRequest_Deserialize) => typedError<Job_Serialize[], string>(__TAURI_INVOKE("jobs_create", { request })),
+	/**  Every job, in queue order. */
+	jobsList: () => __TAURI_INVOKE<Job_Serialize[]>("jobs_list"),
+	jobsGet: (id: string) => typedError<Job_Serialize, string>(__TAURI_INVOKE("jobs_get", { id })),
+	/**  A job's stored transcript. */
+	jobsSegments: (id: string) => typedError<JobSegment[], string>(__TAURI_INVOKE("jobs_segments", { id })),
+	jobsPause: (id: string) => typedError<null, string>(__TAURI_INVOKE("jobs_pause", { id })),
+	jobsResume: (id: string) => typedError<null, string>(__TAURI_INVOKE("jobs_resume", { id })),
+	jobsCancel: (id: string) => typedError<null, string>(__TAURI_INVOKE("jobs_cancel", { id })),
+	jobsDelete: (id: string) => typedError<null, string>(__TAURI_INVOKE("jobs_delete", { id })),
+	jobsRetry: (id: string) => typedError<null, string>(__TAURI_INVOKE("jobs_retry", { id })),
+	jobsSetPriority: (id: string, priority: Priority) => typedError<null, string>(__TAURI_INVOKE("jobs_set_priority", { id, priority })),
+	/**  Put these jobs in this order within the slots they already hold. */
+	jobsReorder: (ids: string[]) => typedError<null, string>(__TAURI_INVOKE("jobs_reorder", { ids })),
+	jobsPauseAll: () => __TAURI_INVOKE<void>("jobs_pause_all"),
+	jobsResumeAll: () => __TAURI_INVOKE<void>("jobs_resume_all"),
+	jobsClearCompleted: () => typedError<null, string>(__TAURI_INVOKE("jobs_clear_completed")),
+	/**  Write a transcript to `path` as `format` (txt, srt, vtt, or json). */
+	jobsExport: (id: string, format: string, path: string) => typedError<null, string>(__TAURI_INVOKE("jobs_export", { id, format, path })),
+	governorGetStatus: () => __TAURI_INVOKE<GovernorStatus_Serialize>("governor_get_status"),
+	/**  The gauge for running `desired` jobs of a model. */
+	governorGauge: (modelId: string, desired: number) => typedError<Gauge, string>(__TAURI_INVOKE("governor_gauge", { modelId, desired })),
+	/**  Choose Auto or Manual mode, and the Manual limit. */
+	governorSetParallel: (mode: ParallelMode, manualMax: number) => __TAURI_INVOKE<void>("governor_set_parallel", { mode, manualMax }),
 };
 
 /** Events */
 export const events = {
 	downloadProgress: makeEvent<DownloadProgress_Serialize, DownloadProgress_Deserialize>("download-progress"),
 	downloadState: makeEvent<DownloadState_Serialize, DownloadState_Deserialize>("download-state"),
+	governorWarned: makeEvent<GovernorWarned, GovernorWarned>("governor-warned"),
+	jobProgressChanged: makeEvent<JobProgressChanged_Serialize, JobProgressChanged_Deserialize>("job-progress-changed"),
+	jobSegmentsAdded: makeEvent<JobSegmentsAdded, JobSegmentsAdded>("job-segments-added"),
+	jobStateChanged: makeEvent<JobStateChanged_Serialize, JobStateChanged_Deserialize>("job-state-changed"),
 };
 
 /* Types */
@@ -185,6 +214,80 @@ export type FitResult = {
 	reasons: FitReason[],
 };
 
+/**  Gauge result: level + the maximum safe concurrency. */
+export type Gauge = {
+	level: GaugeLevel,
+	max_safe: number,
+};
+
+/**  Gauge level for the "Parallel jobs" control. */
+export type GaugeLevel = "safe" | "tight" | "too_many";
+
+/**  Everything the "Parallel jobs" control and queue header show. */
+export type GovernorStatus = GovernorStatus_Serialize | GovernorStatus_Deserialize;
+
+/**  Everything the "Parallel jobs" control and queue header show. */
+export type GovernorStatus_Deserialize = {
+	mode: ParallelMode,
+	/**  The current limit on jobs at once. */
+	parallel_limit: number,
+	running: number,
+	queued: number,
+	paused: number,
+	mem_budget: number | null,
+	reserved_mem: number | null,
+	cpu_budget: number,
+	reserved_cpu: number,
+	/**
+	 *  The gauge for the current limit, sized by the next job's model. `None`
+	 *  when no job is waiting or running.
+	 */
+	gauge?: Gauge | null,
+	/**
+	 *  Estimated seconds until the queue is finished. `None` if nothing is left
+	 *  or the audio length of a job is not known yet.
+	 */
+	queue_eta_secs?: number | null,
+};
+
+/**  Everything the "Parallel jobs" control and queue header show. */
+export type GovernorStatus_Serialize = {
+	mode: ParallelMode,
+	/**  The current limit on jobs at once. */
+	parallel_limit: number,
+	running: number,
+	queued: number,
+	paused: number,
+	mem_budget: number | null,
+	reserved_mem: number | null,
+	cpu_budget: number,
+	reserved_cpu: number,
+	/**
+	 *  The gauge for the current limit, sized by the next job's model. `None`
+	 *  when no job is waiting or running.
+	 */
+	gauge: Gauge | null,
+	/**
+	 *  Estimated seconds until the queue is finished. `None` if nothing is left
+	 *  or the audio length of a job is not known yet.
+	 */
+	queue_eta_secs: number | null,
+};
+
+/**  The governor acted to protect the machine, or has news about it. */
+export type GovernorWarned = {
+	warning: GovernorWarning,
+};
+
+/**  Something the governor did to protect the machine, or wants the user to know. */
+export type GovernorWarning = {
+	reason: WarningReason,
+	message: string,
+	/**  The jobs it affected. */
+	job_ids: string[],
+	at_ms: number | null,
+};
+
 /**  The graphics backend a GPU is exposed through. */
 export type GpuBackend = "metal" | "vulkan" | "dx12" | "cuda" | "gl" | "other";
 
@@ -231,6 +334,172 @@ export type InstalledModel = {
 	size_bytes: number | null,
 	sha256: string,
 	installed_at_ms: number | null,
+};
+
+/**
+ *  A transcription job.
+ * 
+ *  Pausing stops the worker: that is the only way to give the memory back, and
+ *  no OS-independent way exists to suspend native inference. Stored segments
+ *  are kept, and resuming continues from the end of the last one.
+ */
+export type Job = Job_Serialize | Job_Deserialize;
+
+/**  Live progress for a running job. */
+export type JobProgress = JobProgress_Serialize | JobProgress_Deserialize;
+
+/**  Progress for a running job (at most 4 per second per job). */
+export type JobProgressChanged = JobProgressChanged_Serialize | JobProgressChanged_Deserialize;
+
+/**  Progress for a running job (at most 4 per second per job). */
+export type JobProgressChanged_Deserialize = {
+	progress: JobProgress_Deserialize,
+};
+
+/**  Progress for a running job (at most 4 per second per job). */
+export type JobProgressChanged_Serialize = {
+	progress: JobProgress_Serialize,
+};
+
+/**  Live progress for a running job. */
+export type JobProgress_Deserialize = {
+	job_id: string,
+	progress: number | null,
+	stage: string,
+	eta_secs?: number | null,
+};
+
+/**  Live progress for a running job. */
+export type JobProgress_Serialize = {
+	job_id: string,
+	progress: number | null,
+	stage: string,
+	eta_secs: number | null,
+};
+
+/**  A request to add files to the queue. */
+export type JobRequest = JobRequest_Serialize | JobRequest_Deserialize;
+
+/**  A request to add files to the queue. */
+export type JobRequest_Deserialize = {
+	paths: string[],
+	model_id: string,
+	language?: string | null,
+	translate?: boolean,
+	word_timestamps?: boolean,
+	priority?: Priority,
+};
+
+/**  A request to add files to the queue. */
+export type JobRequest_Serialize = {
+	paths: string[],
+	model_id: string,
+	language: string | null,
+	translate: boolean,
+	word_timestamps: boolean,
+	priority: Priority,
+};
+
+/**  A transcript line as sent to the UI. */
+export type JobSegment = {
+	idx: number,
+	start_ms: number | null,
+	end_ms: number | null,
+	text: string,
+};
+
+/**  New transcript lines for a running job (batched, at most 4 per second). */
+export type JobSegmentsAdded = {
+	job_id: string,
+	segments: JobSegment[],
+};
+
+/**  Lifecycle state of a job. */
+export type JobState = "queued" | "starting" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+/**  A job changed state (or its wait reason, or its audio length). */
+export type JobStateChanged = JobStateChanged_Serialize | JobStateChanged_Deserialize;
+
+/**  A job changed state (or its wait reason, or its audio length). */
+export type JobStateChanged_Deserialize = {
+	job: Job_Deserialize,
+};
+
+/**  A job changed state (or its wait reason, or its audio length). */
+export type JobStateChanged_Serialize = {
+	job: Job_Serialize,
+};
+
+/**
+ *  A transcription job.
+ * 
+ *  Pausing stops the worker: that is the only way to give the memory back, and
+ *  no OS-independent way exists to suspend native inference. Stored segments
+ *  are kept, and resuming continues from the end of the last one.
+ */
+export type Job_Deserialize = {
+	id: string,
+	model_id: string,
+	input_path: string,
+	/**  Audio length once known. */
+	duration_ms?: number | null,
+	priority: Priority,
+	/**  Position within a priority; lower runs first. Drag to reorder sets this. */
+	rank: number | null,
+	state: JobState,
+	/**  Set while `Paused`. */
+	pause_origin?: PauseOrigin | null,
+	/**  Why a queued job is not running yet (not persisted). */
+	wait_reason?: string | null,
+	/**  Whole-job progress in \[0, 1]. */
+	progress: number | null,
+	language?: string | null,
+	translate?: boolean,
+	word_timestamps?: boolean,
+	created_at_ms: number | null,
+	started_at_ms?: number | null,
+	finished_at_ms?: number | null,
+	error_code?: string | null,
+	error_message?: string | null,
+	retries: number,
+	/**  Measured real-time factor, once finished. */
+	rtf?: number | null,
+};
+
+/**
+ *  A transcription job.
+ * 
+ *  Pausing stops the worker: that is the only way to give the memory back, and
+ *  no OS-independent way exists to suspend native inference. Stored segments
+ *  are kept, and resuming continues from the end of the last one.
+ */
+export type Job_Serialize = {
+	id: string,
+	model_id: string,
+	input_path: string,
+	/**  Audio length once known. */
+	duration_ms: number | null,
+	priority: Priority,
+	/**  Position within a priority; lower runs first. Drag to reorder sets this. */
+	rank: number | null,
+	state: JobState,
+	/**  Set while `Paused`. */
+	pause_origin: PauseOrigin | null,
+	/**  Why a queued job is not running yet (not persisted). */
+	wait_reason: string | null,
+	/**  Whole-job progress in \[0, 1]. */
+	progress: number | null,
+	language: string | null,
+	translate: boolean,
+	word_timestamps: boolean,
+	created_at_ms: number | null,
+	started_at_ms: number | null,
+	finished_at_ms: number | null,
+	error_code: string | null,
+	error_message: string | null,
+	retries: number,
+	/**  Measured real-time factor, once finished. */
+	rtf: number | null,
 };
 
 /**  The full machine profile, captured at launch and refreshed on demand. */
@@ -361,6 +630,12 @@ export type OsInfo = {
 	arch: string,
 };
 
+/**  Auto (adaptive) or Manual (fixed) concurrency. */
+export type ParallelMode = "auto" | "manual";
+
+/**  Who paused a job. Only the governor's own pauses resume by themselves. */
+export type PauseOrigin = "user" | "governor";
+
 /**  Power source and battery state. Everything is best effort. */
 export type PowerInfo = PowerInfo_Serialize | PowerInfo_Deserialize;
 
@@ -377,6 +652,9 @@ export type PowerInfo_Serialize = {
 	battery_pct: number | null,
 	low_power_mode: boolean,
 };
+
+/**  Scheduling priority. Higher runs first. */
+export type Priority = "low" | "normal" | "high";
 
 /**
  *  One reference measurement of a model's real-time factor on a named machine
@@ -432,6 +710,9 @@ export type UsageSample_Serialize = {
 
 /**  The overall fit judgement, worst to best is the opposite of this order. */
 export type Verdict = "excellent" | "good" | "slow" | "risky" | "not_recommended";
+
+/**  A structured reason for a governor warning. */
+export type WarningReason = "low_memory" | "swap_growth" | "thermal_serious" | "thermal_critical" | "worker_out_of_memory" | "gpu_fallback" | "recovered";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

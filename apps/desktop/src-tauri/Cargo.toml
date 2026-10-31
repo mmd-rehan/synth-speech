@@ -37,18 +37,18 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 oas-core.workspace = true
-oas-protocol.workspace = true
 oas-hardware.workspace = true
 oas-catalog.workspace = true
 oas-fit.workspace = true
 oas-download.workspace = true
 oas-storage.workspace = true
+oas-jobs.workspace = true
+oas-audio.workspace = true
 serde.workspace = true
 tracing.workspace = true
 tokio = { version = "1", features = ["sync"] }
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 specta = { workspace = true, features = ["derive"] }
 specta-typescript.workspace = true

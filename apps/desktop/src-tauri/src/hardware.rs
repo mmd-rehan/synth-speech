@@ -2,10 +2,11 @@
 //!
 //! The profile is cached in SQLite; live usage is sampled on a background
 //! thread and pushed to the UI as `hardware:usage` events (1 Hz while the
-//! window is focused, 0.2 Hz otherwise).
+//! window is focused or jobs are running, 0.2 Hz otherwise). Each sample also
+//! drives the job governor.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use oas_core::telemetry::LogGuard;
@@ -18,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Shared application state, managed by Tauri.
 pub struct AppState {
-    pub db: Database,
+    pub db: Arc<Database>,
     pub paths: Paths,
     pub catalog: oas_catalog::Catalog,
     pub downloads: crate::downloads::DownloadManager,
@@ -31,7 +32,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(
-        db: Database,
+        db: Arc<Database>,
         paths: Paths,
         catalog: oas_catalog::Catalog,
         log_guard: LogGuard,
@@ -187,7 +188,7 @@ fn recent_logs(paths: &Paths, max_lines: usize) -> String {
 }
 
 /// Start the background usage sampler. Emits `hardware:usage` every second when
-/// the window is focused, every five seconds when it is not.
+/// the window is focused or a job is running, every five seconds otherwise.
 pub fn spawn_usage_monitor(app: AppHandle) {
     std::thread::spawn(move || loop {
         let interval = {
@@ -203,7 +204,14 @@ pub fn spawn_usage_monitor(app: AppHandle) {
             lock(&state.history).push(sample.clone());
             let _ = app.emit("hardware:usage", &sample);
 
-            if state.visible.load(Ordering::Relaxed) {
+            let mut busy = false;
+            if let Some(jobs) = app.try_state::<oas_jobs::JobManager>() {
+                let on_battery = lock(&state.probe).power_info().on_battery;
+                jobs.tick(crate::jobs::signals_from(&sample, on_battery));
+                busy = jobs.held_resources().0 > 0;
+            }
+
+            if busy || state.visible.load(Ordering::Relaxed) {
                 Duration::from_secs(1)
             } else {
                 Duration::from_secs(5)

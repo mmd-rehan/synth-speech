@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
+import { AddFiles } from "@/components/AddFiles";
 import { Button } from "@/components/ui/button";
 import { commands, type AppInfo } from "@/bindings";
 
@@ -10,7 +11,13 @@ type ProbeState =
   | { kind: "ok"; version: string }
   | { kind: "error"; message: string };
 
-export function HomeScreen() {
+export function HomeScreen({
+  onJobsAdded,
+  onNeedModel,
+}: {
+  onJobsAdded?: () => void;
+  onNeedModel?: () => void;
+}) {
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
 
@@ -53,6 +60,10 @@ export function HomeScreen() {
         Run speech AI models locally, on your own machine.
         {info ? ` Version ${info.version}.` : ""}
       </p>
+
+      <section className="mt-8">
+        <AddFiles dropZone onAdded={onJobsAdded} onNeedModel={onNeedModel} />
+      </section>
 
       <section className="mt-8 rounded-lg border p-6">
         <h2 className="text-sm font-semibold">Worker sidecar</h2>

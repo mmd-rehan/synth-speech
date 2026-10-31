@@ -10,8 +10,11 @@ vi.mock("@/bindings", () => ({
   commands: {
     appVersion: () => appVersion(),
     spawnWorkerProbe: () => spawnWorkerProbe(),
+    modelsListInstalled: () =>
+      Promise.resolve({ status: "ok", data: [] }),
   },
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { HomeScreen } from "@/components/screens/HomeScreen";
 

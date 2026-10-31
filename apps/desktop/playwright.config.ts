@@ -5,8 +5,9 @@ export default defineConfig({
   fullyParallel: true,
   use: { baseURL: "http://localhost:4173", viewport: { width: 1100, height: 720 } },
   webServer: {
-    command: "pnpm exec vite --port 4173 --strictPort",
+    // The production build, because that is what the app's CSP applies to.
+    command: "pnpm exec vite build && pnpm exec vite preview --port 4173 --strictPort",
     url: "http://localhost:4173",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
   },
 });

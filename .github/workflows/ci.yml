@@ -97,12 +97,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake clang libclang-dev
+          sudo apt-get install -y cmake clang libclang-dev libvulkan-dev
 
       - name: Point bindgen at libclang (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Load the MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install the Vulkan SDK
         uses: humbletim/install-vulkan-sdk@v1.2
@@ -198,6 +202,7 @@ jobs:
             echo "CMAKE_GENERATOR=Ninja"
             echo "CMAKE_C_COMPILER=clang-cl"
             echo "CMAKE_CXX_COMPILER=clang-cl"
+            echo "CMAKE_CXX_FLAGS=/EHsc"
             # Git Bash puts its own `link` ahead of the MSVC linker on PATH.
             echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link"
           } >> "$GITHUB_ENV"

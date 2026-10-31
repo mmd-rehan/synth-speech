@@ -31,6 +31,11 @@ test = false
 name = "export-bindings"
 path = "src/bin/export-bindings.rs"
 test = false
+# A development tool. Bundling copies every enabled binary into the app.
+required-features = ["export-bindings"]
+
+[features]
+export-bindings = []
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

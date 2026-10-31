@@ -11,6 +11,9 @@ const catalog = JSON.parse(
   readFileSync(join(here, "../../../catalog/models.v1.json"), "utf8"),
 );
 const shots = join(here, "../../../docs/assets");
+const { csp } = JSON.parse(
+  readFileSync(join(here, "../src-tauri/tauri.conf.json"), "utf8"),
+).app.security;
 mkdirSync(shots, { recursive: true });
 
 async function start(
@@ -19,6 +22,19 @@ async function start(
 ) {
   page.on("pageerror", (e) => {
     throw e;
+  });
+  // Serve pages under the app's real CSP, and fail on anything it blocks.
+  page.on("console", (message) => {
+    if (message.text().includes("Content Security Policy")) {
+      throw new Error(message.text());
+    }
+  });
+  await page.route("**/", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      headers: { ...response.headers(), "content-security-policy": csp },
+    });
   });
   await page.addInitScript(installMockTauri, {
     models: catalog.models,

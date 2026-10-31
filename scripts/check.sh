@@ -37,12 +37,12 @@ step "UI: tests"
 (cd "$desktop_dir" && pnpm test)
 
 step "Regenerate IPC bindings"
-cargo run --quiet -p oas-desktop --bin export-bindings
+cargo run --quiet -p oas-desktop --features export-bindings --bin export-bindings
 
 step "Check generated bindings are up to date"
 if ! git diff --quiet -- "$desktop_dir/src/bindings.ts"; then
   echo "error: apps/desktop/src/bindings.ts is out of date." >&2
-  echo "       Run 'cargo run -p oas-desktop --bin export-bindings' and commit the result." >&2
+  echo "       Run 'cargo run -p oas-desktop --features export-bindings --bin export-bindings' and commit the result." >&2
   exit 1
 fi
 

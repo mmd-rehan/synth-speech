@@ -81,6 +81,35 @@ jobs:
         shell: bash
         run: bash scripts/check.sh
 
+  # The real UI in a real browser, against a mocked IPC layer.
+  e2e:
+    name: End to end (UI)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Install dependencies and browser
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: apps/desktop
+        run: pnpm e2e
+
   # The shipped worker is a release build, and profile-dependent native bugs do
   # not show in debug. Runs the real queue, worker, and model end to end.
   real-inference:

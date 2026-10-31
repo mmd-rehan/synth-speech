@@ -58,3 +58,7 @@ dist/
 *.log
 /tmp/
 *.tmp
+
+# Playwright output
+test-results/
+playwright-report/

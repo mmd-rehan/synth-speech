@@ -224,7 +224,9 @@ export function TranscriptScreen({
           {virtualizer.getVirtualItems().map((row) => {
             const segment = visible[row.index];
             const active =
-              nowMs >= (segment.start_ms ?? 0) && nowMs < (segment.end_ms ?? 0);
+              nowMs > 0 &&
+              nowMs >= (segment.start_ms ?? 0) &&
+              nowMs < (segment.end_ms ?? 0);
             return (
               <div
                 key={segment.idx}

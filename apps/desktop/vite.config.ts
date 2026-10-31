@@ -35,5 +35,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Playwright runs these.
+    exclude: ["e2e/**", "node_modules/**", "dist/**"],
   },
 });

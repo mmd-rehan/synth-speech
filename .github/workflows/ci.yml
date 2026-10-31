@@ -145,6 +145,21 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Load the MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # MSVC compiles ggml's hot loops far more slowly than clang.
+      - name: Build whisper.cpp with clang-cl (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          {
+            echo "CMAKE_GENERATOR=Ninja"
+            echo "CMAKE_C_COMPILER=clang-cl"
+            echo "CMAKE_CXX_COMPILER=clang-cl"
+          } >> "$GITHUB_ENV"
+
       - name: Target AVX2 as shipped builds do
         if: runner.arch == 'X64'
         shell: bash
@@ -160,7 +175,7 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: real-inference-simd-v1
+          prefix-key: real-inference-clang-v1
 
       - name: Cache test model
         uses: actions/cache@v4

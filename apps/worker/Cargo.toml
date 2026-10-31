@@ -20,3 +20,10 @@ oas-engine.workspace = true
 oas-engine-whisper.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+oas-catalog.workspace = true
+oas-hardware.workspace = true
+oas-jobs.workspace = true
+oas-storage.workspace = true
+tempfile = "3"

@@ -80,3 +80,64 @@ jobs:
       - name: Run full check
         shell: bash
         run: bash scripts/check.sh
+
+  # The shipped worker is a release build, and profile-dependent native bugs do
+  # not show in debug. Runs the real queue, worker, and model end to end.
+  real-inference:
+    name: Real inference (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest, ubuntu-22.04]
+    env:
+      MODEL_URL: https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin
+      MODEL_SHA256: be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21
+      AUDIO_URL: https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.7.6/samples/jfk.wav
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang libclang-dev
+
+      - name: Install cmake (macOS)
+        if: runner.os == 'macOS'
+        run: brew list cmake >/dev/null 2>&1 || brew install cmake
+
+      - name: Point bindgen at libclang (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cache test model
+        uses: actions/cache@v4
+        with:
+          path: test-assets
+          key: real-inference-${{ env.MODEL_SHA256 }}-v1.7.6
+
+      - name: Fetch and verify test assets
+        shell: bash
+        run: |
+          mkdir -p test-assets
+          [ -f test-assets/ggml-tiny.bin ] || curl -fsSL -o test-assets/ggml-tiny.bin "$MODEL_URL"
+          [ -f test-assets/jfk.wav ] || curl -fsSL -o test-assets/jfk.wav "$AUDIO_URL"
+          actual=$(python3 -c "import hashlib; print(hashlib.sha256(open('test-assets/ggml-tiny.bin','rb').read()).hexdigest())")
+          [ "$actual" = "$MODEL_SHA256" ]
+
+      - name: Run the queue on a real model (release)
+        shell: bash
+        env:
+          OAS_TEST_MODEL: ${{ github.workspace }}/test-assets/ggml-tiny.bin
+          OAS_TEST_AUDIO: ${{ github.workspace }}/test-assets/jfk.wav
+          OAS_TEST_JOBS: "8"
+        run: cargo test --release -p oas-worker -- --nocapture

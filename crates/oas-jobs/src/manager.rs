@@ -42,6 +42,10 @@ const SWAP_WINDOW_MS: u64 = 10_000;
 /// is judged necessary, and between resumes after recovery.
 const WATCHDOG_COOLDOWN_MS: u64 = 15_000;
 
+/// Time after which a running job's memory is assumed to show in live usage.
+/// Until then its reservation counts on top of live usage, not within it.
+const MODEL_LOAD_SETTLE_MS: u64 = 10_000;
+
 /// A source of the current time.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> u64;
@@ -1359,11 +1363,18 @@ impl Core {
         let now = self.now();
         self.signals = signals;
 
-        // Budgets from live memory. Running jobs' reservations are added back,
-        // because the memory they hold is already missing from `available`.
+        // Budgets from live memory. A loaded job's memory is already missing
+        // from `available` while its reservation also counts against the budget,
+        // so it is added back. A job still loading has taken nothing yet.
+        let loaded: u64 = self
+            .active
+            .values()
+            .filter(|a| now.saturating_sub(a.spawned_at_ms) >= MODEL_LOAD_SETTLE_MS)
+            .map(|a| a.reservation.mem_bytes)
+            .sum();
         let pool = signals
             .available_ram
-            .saturating_add(self.governor.reserved_mem())
+            .saturating_add(loaded)
             .min(self.machine.total_ram);
         self.governor.set_budgets(Budgets::new(
             pool,

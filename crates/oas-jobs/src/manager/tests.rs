@@ -932,6 +932,39 @@ fn a_full_machine_keeps_jobs_waiting_until_memory_frees() {
 }
 
 #[test]
+fn jobs_still_loading_their_model_are_not_counted_as_memory_already_in_use() {
+    let h = harness();
+    h.mgr.set_parallel(ParallelMode::Manual, 15);
+    let job_mem =
+        JobCost::for_model(catalog().get("whisper-tiny").unwrap(), Some(60_000), false).mem_bytes;
+    // Room for exactly two jobs beyond the safety reserve.
+    let signals = Signals {
+        available_ram: safety_reserve(h.machine.total_ram) + 2 * job_mem,
+        ..h.calm()
+    };
+    h.mgr.tick(signals);
+    h.add(6, "whisper-tiny");
+    assert_eq!(h.mgr.held_resources().0, 2);
+
+    // Neither job has loaded yet, so live memory has not moved. However many
+    // ticks pass, that must not make room for more.
+    for _ in 0..5 {
+        h.advance(1_000);
+        h.mgr.tick(signals);
+    }
+    assert_eq!(h.mgr.held_resources().0, 2);
+
+    // Once loaded, their memory is really gone from `available`, and the
+    // reservation is what stands in for it. Still two.
+    h.advance(MODEL_LOAD_SETTLE_MS);
+    h.mgr.tick(Signals {
+        available_ram: safety_reserve(h.machine.total_ram),
+        ..h.calm()
+    });
+    assert_eq!(h.mgr.held_resources().0, 2);
+}
+
+#[test]
 fn an_oom_kill_fails_the_job_and_lowers_the_learned_limit() {
     let h = harness();
     h.mgr.set_parallel(ParallelMode::Manual, 3);

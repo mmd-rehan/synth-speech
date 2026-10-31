@@ -193,16 +193,9 @@ impl SystemProbe for RealProbe {
     fn mem_info(&self) -> MemInfo {
         // Unified memory is the Apple Silicon case: aarch64 macOS.
         let is_unified = cfg!(all(target_os = "macos", target_arch = "aarch64"));
-        let total = self.system.total_memory();
-        let mut available = self.system.available_memory();
-        if available == 0 {
-            // Some platforms (notably macOS) report 0 for "available"; fall back
-            // to total minus used so the fit engine has a usable figure.
-            available = total.saturating_sub(self.system.used_memory());
-        }
         MemInfo {
-            total_bytes: total,
-            available_bytes: available,
+            total_bytes: self.system.total_memory(),
+            available_bytes: available_memory(&self.system),
             is_unified,
         }
     }
@@ -271,7 +264,7 @@ impl SystemProbe for RealProbe {
             cpu_total_pct,
             cpu_per_core,
             ram_used_bytes: self.system.used_memory(),
-            ram_available_bytes: self.system.available_memory(),
+            ram_available_bytes: available_memory(&self.system),
             swap_used_bytes: self.system.used_swap(),
             gpu_util_pct: None,
             vram_used_bytes: None,
@@ -282,5 +275,29 @@ impl SystemProbe for RealProbe {
             battery_pct: None,
             captured_at_ms: now_ms(),
         }
+    }
+}
+
+/// Memory available to start new work. Some platforms (notably macOS) report 0
+/// for "available", so fall back to total minus used.
+fn available_memory(system: &System) -> u64 {
+    match system.available_memory() {
+        0 => system.total_memory().saturating_sub(system.used_memory()),
+        available => available,
+    }
+}
+
+#[cfg(test)]
+mod real_probe_tests {
+    use super::*;
+
+    // The governor admits jobs and pauses them from this one number, so a
+    // platform that reports 0 here would block every job.
+    #[test]
+    fn live_samples_report_available_memory() {
+        let mut probe = RealProbe::new();
+        let sample = probe.sample_usage(Path::new("."));
+        assert!(sample.ram_available_bytes > 0);
+        assert!(sample.ram_available_bytes <= probe.mem_info().total_bytes);
     }
 }

@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use oas_core::{OasError, Result};
@@ -19,6 +20,32 @@ fn map_err(e: whisper_rs::WhisperError) -> OasError {
     OasError::Internal {
         reason: format!("whisper engine error: {e}"),
     }
+}
+
+/// The token of the run in progress. A process runs one transcription at a time
+/// (a worker runs one job and exits, and the CLI runs one file).
+static RUN_CANCEL: Mutex<Option<CancelToken>> = Mutex::new(None);
+
+/// The abort callback: `true` stops the run.
+///
+/// This must stay a plain function and never become a capturing closure.
+/// whisper-rs 0.16's `set_abort_callback_safe` stores a boxed trait object but
+/// reads the pointer back as the closure's own type, so a capture would be read
+/// from unrelated heap memory and the run would abort at random (ADR-17). A
+/// function has no data to misread, which is why the token lives in a static.
+fn run_was_cancelled() -> bool {
+    RUN_CANCEL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .is_some_and(CancelToken::is_cancelled)
+}
+
+/// The value handed to whisper-rs, typed so that it stays the zero-sized
+/// function item. Casting it to a `fn()` pointer would give the bad read above
+/// eight bytes to misuse, and crash.
+fn abort_callback() -> impl FnMut() -> bool + 'static {
+    run_was_cancelled
 }
 
 /// A loaded whisper.cpp model ready to transcribe.
@@ -88,12 +115,9 @@ impl Engine for WhisperEngine {
         params.set_print_realtime(false);
         params.set_print_timestamps(false);
 
-        // Cooperative cancellation. NOTE: this ggml abort callback returns
-        // `true` to CONTINUE and `false` to ABORT (the opposite of older
-        // whisper.cpp docs — verified empirically: returning the cancelled flag
-        // directly aborted every run). So return "not cancelled".
-        let token = cancel.clone();
-        params.set_abort_callback_safe(move || !token.is_cancelled());
+        // Cooperative cancellation.
+        *RUN_CANCEL.lock().unwrap_or_else(|e| e.into_inner()) = Some(cancel.clone());
+        params.set_abort_callback_safe(abort_callback());
 
         // Stream output as it is produced, so a crash keeps partial results and
         // the UI can show live text. Timestamps arrive in 10 ms units.
@@ -124,5 +148,16 @@ impl Engine for WhisperEngine {
             peak_rss_mib: 0,
             audio_sec,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Guards the workaround: with no data, the callback cannot read bad memory.
+    #[test]
+    fn abort_callback_carries_no_data() {
+        assert_eq!(std::mem::size_of_val(&abort_callback()), 0);
     }
 }

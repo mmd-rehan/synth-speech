@@ -10,3 +10,10 @@ description = "Job queue, scheduler, and resource governor."
 
 [dependencies]
 oas-core.workspace = true
+oas-hardware.workspace = true
+oas-catalog.workspace = true
+serde.workspace = true
+specta = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+proptest = "1"

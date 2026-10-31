@@ -2681,7 +2681,12 @@ dependencies = [
 name = "oas-jobs"
 version = "0.1.0"
 dependencies = [
+ "oas-catalog",
  "oas-core",
+ "oas-hardware",
+ "proptest",
+ "serde",
+ "specta",
 ]
 
 [[package]]

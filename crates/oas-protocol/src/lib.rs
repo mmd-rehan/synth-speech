@@ -74,6 +74,10 @@ pub enum CoreToWorker {
         #[serde(default)]
         options: JobOptions,
         limits: Limits,
+        /// Resume point: skip audio before this time. Used to continue a job
+        /// that was paused, keeping the segments already stored.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resume_from_sec: Option<f64>,
     },
     /// Ask the worker to stop the current job and exit cleanly.
     Cancel,
@@ -88,6 +92,8 @@ pub enum WorkerToCore {
         /// The worker binary version, for diagnostics.
         worker_version: String,
     },
+    /// The audio was decoded; its full length is now known.
+    Audio { duration_sec: f64 },
     /// Coarse progress update.
     Progress { pct: f32, stage: String },
     /// A finished transcript segment.
@@ -100,7 +106,7 @@ pub enum WorkerToCore {
     },
     /// Performance metrics emitted near the end of a job.
     Metrics {
-        /// Real-time factor: audio seconds processed per wall-clock second.
+        /// Real-time factor: processing seconds per second of audio.
         rtf: f32,
         /// Peak resident memory in mebibytes.
         peak_rss_mib: u32,
@@ -199,6 +205,7 @@ mod tests {
                 mem_budget_mib: 2048,
                 use_gpu: true,
             },
+            resume_from_sec: Some(12.5),
         });
         let line = env.to_line().unwrap();
         let back: Envelope<CoreToWorker> = Envelope::from_line(&line).unwrap();

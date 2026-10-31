@@ -27,6 +27,7 @@ fn start_produces_segments_and_done() {
         engine: EngineKind::WhisperCpp,
         options: JobOptions::default(),
         limits: Limits::default(),
+        resume_from_sec: None,
     })
     .to_line()
     .unwrap();
@@ -37,14 +38,13 @@ fn start_produces_segments_and_done() {
         .spawn()
         .expect("spawn worker");
 
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(format!("{start}\n").as_bytes())
-        .unwrap();
+    // Keep stdin open for the whole run: end of stdin tells the worker that the
+    // core died, and it exits at once.
+    let mut stdin = child.stdin.take().unwrap();
+    stdin.write_all(format!("{start}\n").as_bytes()).unwrap();
 
     let output = child.wait_with_output().expect("worker output");
+    drop(stdin);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert!(stdout.contains("\"type\":\"ready\""), "no ready: {stdout}");

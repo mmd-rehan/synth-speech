@@ -42,6 +42,9 @@ pub struct RunOptions {
     pub threads: Option<u32>,
     /// Initial prompt to bias decoding.
     pub initial_prompt: Option<String>,
+    /// Skip audio before this many seconds (used to resume a paused job).
+    /// Timestamps in the output stay relative to the start of the file.
+    pub start_offset_sec: Option<f32>,
 }
 
 /// Summary metrics produced at the end of a run.
@@ -73,12 +76,13 @@ impl CancelToken {
     }
 }
 
-/// Callbacks an engine invokes as it produces output.
-pub struct Callbacks<'a> {
-    /// Called for each finished segment.
-    pub on_segment: &'a mut dyn FnMut(Segment),
-    /// Called with progress in \[0, 1].
-    pub on_progress: &'a mut dyn FnMut(f32),
+/// Callbacks an engine invokes as it produces output, *while* it runs. They are
+/// owned because native backends keep them for the length of the run.
+pub struct Callbacks {
+    /// Called for each finished segment, as soon as it is finished.
+    pub on_segment: Box<dyn FnMut(Segment)>,
+    /// Called with progress in \[0, 1] for this run.
+    pub on_progress: Box<dyn FnMut(f32)>,
 }
 
 /// A speech-to-text engine. Implemented by backends such as whisper.cpp.
@@ -87,14 +91,15 @@ pub trait Engine {
     fn id(&self) -> &str;
 
     /// Transcribe mono f32 `audio` sampled at `rate`, invoking callbacks as
-    /// output is produced. Must poll `cancel` and stop promptly when set.
+    /// output is produced. Must poll `cancel` and stop promptly when set; a
+    /// cancelled run may return an error, so callers check `cancel` first.
     fn transcribe(
         &mut self,
         audio: &[f32],
         rate: u32,
         opts: &RunOptions,
         cancel: &CancelToken,
-        callbacks: &mut Callbacks<'_>,
+        callbacks: Callbacks,
     ) -> Result<RunSummary>;
 }
 

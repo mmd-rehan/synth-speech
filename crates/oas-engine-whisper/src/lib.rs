@@ -11,7 +11,9 @@ use std::time::Instant;
 
 use oas_core::{OasError, Result};
 use oas_engine::{Callbacks, CancelToken, Engine, RunOptions, RunSummary, Segment};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    FullParams, SamplingStrategy, SegmentCallbackData, WhisperContext, WhisperContextParameters,
+};
 
 fn map_err(e: whisper_rs::WhisperError) -> OasError {
     OasError::Internal {
@@ -56,7 +58,7 @@ impl Engine for WhisperEngine {
         rate: u32,
         opts: &RunOptions,
         cancel: &CancelToken,
-        callbacks: &mut Callbacks<'_>,
+        callbacks: Callbacks,
     ) -> Result<RunSummary> {
         let mut state = self.ctx.create_state().map_err(map_err)?;
 
@@ -77,6 +79,9 @@ impl Engine for WhisperEngine {
         if let Some(prompt) = &opts.initial_prompt {
             params.set_initial_prompt(prompt);
         }
+        if let Some(offset) = opts.start_offset_sec {
+            params.set_offset_ms((offset.max(0.0) * 1000.0) as i32);
+        }
         // Keep whisper.cpp quiet on stdout/stderr.
         params.set_print_special(false);
         params.set_print_progress(false);
@@ -90,30 +95,27 @@ impl Engine for WhisperEngine {
         let token = cancel.clone();
         params.set_abort_callback_safe(move || !token.is_cancelled());
 
-        (callbacks.on_progress)(0.0);
+        // Stream output as it is produced, so a crash keeps partial results and
+        // the UI can show live text. Timestamps arrive in 10 ms units.
+        let Callbacks {
+            mut on_segment,
+            mut on_progress,
+        } = callbacks;
+        params.set_segment_callback_safe_lossy(move |data: SegmentCallbackData| {
+            let text = data.text.trim().to_string();
+            if !text.is_empty() {
+                on_segment(Segment {
+                    start: data.start_timestamp as f64 * 0.01,
+                    end: data.end_timestamp as f64 * 0.01,
+                    text,
+                    words: vec![],
+                });
+            }
+        });
+        params.set_progress_callback_safe(move |pct: i32| on_progress(pct as f32 / 100.0));
+
         let start = Instant::now();
         state.full(params, audio).map_err(map_err)?;
-
-        let n = state.full_n_segments();
-        for i in 0..n {
-            if cancel.is_cancelled() {
-                break;
-            }
-            if let Some(seg) = state.get_segment(i) {
-                let text = seg.to_str_lossy().map_err(map_err)?.trim().to_string();
-                let t0 = seg.start_timestamp() as f64 * 0.01;
-                let t1 = seg.end_timestamp() as f64 * 0.01;
-                if !text.is_empty() {
-                    (callbacks.on_segment)(Segment {
-                        start: t0,
-                        end: t1,
-                        text,
-                        words: vec![],
-                    });
-                }
-            }
-        }
-        (callbacks.on_progress)(1.0);
 
         let audio_sec = audio.len() as f32 / rate.max(1) as f32;
         let rtf = start.elapsed().as_secs_f32() / audio_sec.max(0.001);

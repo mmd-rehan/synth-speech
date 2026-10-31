@@ -13,7 +13,7 @@ mod decode;
 mod resample;
 
 pub use chunk::{chunk_audio, AudioChunk, ChunkOptions};
-pub use decode::decode_file;
+pub use decode::{decode_file, probe_duration_sec};
 pub use resample::resample_linear;
 
 /// The sample rate Whisper and the rest of the pipeline operate at.

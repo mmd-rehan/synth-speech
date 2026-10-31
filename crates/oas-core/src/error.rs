@@ -62,6 +62,14 @@ pub enum OasError {
     #[error("Offline mode is on, so this needs to be done with the network enabled.")]
     OfflineMode,
 
+    /// The app stopped while this job was running.
+    #[error("The app closed while this job was running.")]
+    JobInterrupted,
+
+    /// A worker process stopped without reporting a result.
+    #[error("The transcription process stopped unexpectedly: {reason}")]
+    WorkerCrashed { reason: String },
+
     /// An underlying I/O error.
     #[error("I/O error: {reason}")]
     Io { reason: String },
@@ -89,6 +97,8 @@ impl OasError {
             OasError::HashMismatch { .. } => "HASH_MISMATCH",
             OasError::InsufficientDisk { .. } => "INSUFFICIENT_DISK",
             OasError::OfflineMode => "OFFLINE_MODE",
+            OasError::JobInterrupted => "JOB_INTERRUPTED",
+            OasError::WorkerCrashed { .. } => "WORKER_CRASHED",
             OasError::Io { .. } => "IO_ERROR",
             OasError::Internal { .. } => "INTERNAL_ERROR",
         }
@@ -126,6 +136,10 @@ impl OasError {
             OasError::OfflineMode => {
                 Some("Turn off offline mode in Settings to download or check for updates.")
             }
+            OasError::JobInterrupted => Some("Press Retry to run it again."),
+            OasError::WorkerCrashed { .. } => {
+                Some("Press Retry. If it keeps happening, try a smaller model.")
+            }
             _ => None,
         }
     }
@@ -134,7 +148,11 @@ impl OasError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            OasError::Network { .. } | OasError::Io { .. } | OasError::HashMismatch { .. }
+            OasError::Network { .. }
+                | OasError::Io { .. }
+                | OasError::HashMismatch { .. }
+                | OasError::JobInterrupted
+                | OasError::WorkerCrashed { .. }
         )
     }
 }
@@ -237,6 +255,11 @@ mod tests {
                 "INSUFFICIENT_DISK",
             ),
             (OasError::OfflineMode, "OFFLINE_MODE"),
+            (OasError::JobInterrupted, "JOB_INTERRUPTED"),
+            (
+                OasError::WorkerCrashed { reason: "x".into() },
+                "WORKER_CRASHED",
+            ),
             (OasError::Io { reason: "x".into() }, "IO_ERROR"),
             (OasError::Internal { reason: "x".into() }, "INTERNAL_ERROR"),
         ];

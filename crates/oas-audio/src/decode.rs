@@ -19,6 +19,29 @@ fn decode_failed(reason: impl std::fmt::Display) -> OasError {
     }
 }
 
+/// Read a file's duration from its headers, without decoding it. Returns `None`
+/// when the file cannot be read or does not declare a length (e.g. some MP3s);
+/// the worker reports the true length after decoding either way.
+pub fn probe_duration_sec(path: &Path) -> Option<f64> {
+    let file = std::fs::File::open(path).ok()?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .ok()?;
+    let params = &probed.format.default_track()?.codec_params;
+    let rate = params.sample_rate.filter(|r| *r > 0)?;
+    Some(params.n_frames? as f64 / rate as f64)
+}
+
 /// Decode `path` into mono f32 samples at [`TARGET_RATE`].
 pub fn decode_file(path: &Path) -> Result<AudioPcm> {
     let file = std::fs::File::open(path)?;

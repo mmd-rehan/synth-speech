@@ -10,6 +10,9 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use oas_core::Result;
 use oas_engine::{Callbacks, CancelToken, Engine, RunOptions, Segment};
 use oas_engine_whisper::WhisperEngine;
@@ -125,21 +128,16 @@ fn transcribe(
         ..Default::default()
     };
 
-    let mut segments: Vec<Segment> = Vec::new();
+    // Segments arrive through an owned callback while the engine runs.
+    let collected = Rc::new(RefCell::new(Vec::<Segment>::new()));
+    let sink = Rc::clone(&collected);
     let cancel = CancelToken::new();
-    let mut on_segment = |s: Segment| segments.push(s);
-    let mut on_progress = |_p: f32| {};
-    let mut callbacks = Callbacks {
-        on_segment: &mut on_segment,
-        on_progress: &mut on_progress,
+    let callbacks = Callbacks {
+        on_segment: Box::new(move |s: Segment| sink.borrow_mut().push(s)),
+        on_progress: Box::new(|_p: f32| {}),
     };
-    let summary = engine.transcribe(
-        &pcm.samples,
-        pcm.sample_rate,
-        &opts,
-        &cancel,
-        &mut callbacks,
-    )?;
+    let summary = engine.transcribe(&pcm.samples, pcm.sample_rate, &opts, &cancel, callbacks)?;
+    let segments = collected.borrow();
     eprintln!(
         "transcribed {} segments, rtf {:.3}",
         segments.len(),

@@ -5,6 +5,10 @@
 //! `segment` events, finishing with `metrics` + `done` (or `error`). A `cancel`
 //! message stops the current job. Engine panics are caught and reported as
 //! `error` rather than crashing silently.
+//!
+//! stdin is read on its own thread so `cancel` is seen while the engine runs.
+//! End of stdin means the core is gone (it exited or crashed), so the worker
+//! exits at once. This is what prevents orphan workers on every platform.
 
 #![forbid(unsafe_code)]
 
@@ -12,7 +16,9 @@ use std::io::{BufRead, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 use oas_core::error::ErrorInfo;
 use oas_core::OasError;
@@ -41,57 +47,89 @@ fn emit_error(err: &OasError) {
     });
 }
 
+/// Everything a `start` message asks for.
+struct StartRequest {
+    audio_path: String,
+    model_path: String,
+    engine: EngineKind,
+    options: JobOptions,
+    limits: Limits,
+    resume_from_sec: Option<f64>,
+}
+
+/// Read stdin until it closes: route `cancel` to the token and `start` to the
+/// main thread. If stdin closes while a job runs, the core died, so exit now.
+fn spawn_stdin_reader(
+    cancel: CancelToken,
+    job_running: Arc<AtomicBool>,
+    starts: mpsc::Sender<StartRequest>,
+) {
+    std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            let Ok(line) = line else { break };
+            if line.trim().is_empty() {
+                continue;
+            }
+            match Envelope::<CoreToWorker>::from_line(&line) {
+                Ok(env) => match env.msg {
+                    CoreToWorker::Start {
+                        audio_path,
+                        model_path,
+                        engine,
+                        options,
+                        limits,
+                        resume_from_sec,
+                        ..
+                    } => {
+                        job_running.store(true, Ordering::SeqCst);
+                        let _ = starts.send(StartRequest {
+                            audio_path,
+                            model_path,
+                            engine,
+                            options,
+                            limits,
+                            resume_from_sec,
+                        });
+                    }
+                    CoreToWorker::Cancel => cancel.cancel(),
+                },
+                Err(e) => emit_error(&e),
+            }
+        }
+        if job_running.load(Ordering::SeqCst) {
+            std::process::exit(0);
+        }
+        // Idle worker: dropping `starts` lets main return normally.
+    });
+}
+
 fn main() -> ExitCode {
     emit(WorkerToCore::Ready {
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
     });
 
     let cancel = CancelToken::new();
-    let stdin = std::io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
-        if line.trim().is_empty() {
-            continue;
-        }
-        match Envelope::<CoreToWorker>::from_line(&line) {
-            Ok(env) => match env.msg {
-                CoreToWorker::Start {
-                    audio_path,
-                    model_path,
-                    engine,
-                    options,
-                    limits,
-                    ..
-                } => {
-                    // Run synchronously; a `cancel` can still arrive because the
-                    // engine polls the shared token from its abort callback on
-                    // its own worker threads.
-                    run_job(audio_path, model_path, engine, options, limits, &cancel);
-                    // One job per worker process; exit after it finishes.
-                    return ExitCode::SUCCESS;
-                }
-                CoreToWorker::Cancel => {
-                    cancel.cancel();
-                }
-            },
-            Err(e) => emit_error(&e),
-        }
-    }
+    let (tx, rx) = mpsc::channel();
+    spawn_stdin_reader(cancel.clone(), Arc::new(AtomicBool::new(false)), tx);
 
+    // One job per worker process; exit after it finishes.
+    if let Ok(request) = rx.recv() {
+        run_job(request, &cancel);
+    }
     ExitCode::SUCCESS
 }
 
-fn run_job(
-    audio_path: String,
-    model_path: String,
-    engine: EngineKind,
-    options: JobOptions,
-    limits: Limits,
-    cancel: &CancelToken,
-) {
+fn run_job(request: StartRequest, cancel: &CancelToken) {
+    let StartRequest {
+        audio_path,
+        model_path,
+        engine,
+        options,
+        limits,
+        resume_from_sec,
+    } = request;
+
     if engine != EngineKind::WhisperCpp {
         emit_error(&OasError::InvalidInput {
             reason: "this worker build only supports the whisper.cpp engine".into(),
@@ -104,10 +142,25 @@ fn run_job(
         Ok(p) => p,
         Err(e) => return emit_error(&e),
     };
+    let duration_sec = pcm.samples.len() as f64 / pcm.sample_rate.max(1) as f64;
+    emit(WorkerToCore::Audio { duration_sec });
+
+    // The share of the file already done before this run started.
+    let offset = resume_from_sec.unwrap_or(0.0).max(0.0);
+    let done_share = (offset / duration_sec.max(0.001)).min(1.0) as f32;
     emit(WorkerToCore::Progress {
-        pct: 5.0,
+        pct: overall_pct(done_share, 0.0),
         stage: "decoded".into(),
     });
+
+    // Paused right at the end: nothing is left to transcribe.
+    if offset + 0.1 >= duration_sec && resume_from_sec.is_some() {
+        emit(WorkerToCore::Done);
+        return;
+    }
+    if cancel.is_cancelled() {
+        return;
+    }
 
     // Load the model.
     let mut whisper = match WhisperEngine::load(&PathBuf::from(&model_path)) {
@@ -122,47 +175,45 @@ fn run_job(
         beam_size: None,
         threads: Some(limits.max_threads),
         initial_prompt: None,
+        start_offset_sec: resume_from_sec.map(|s| s as f32),
     };
 
-    let mut on_segment = |seg: oas_engine::Segment| {
-        emit(WorkerToCore::Segment {
-            start: seg.start,
-            end: seg.end,
-            text: seg.text,
-            words: seg
-                .words
-                .into_iter()
-                .map(|w| oas_protocol::Word {
-                    start: w.start,
-                    end: w.end,
-                    text: w.text,
-                })
-                .collect(),
-        });
-    };
-    let mut on_progress = |p: f32| {
-        emit(WorkerToCore::Progress {
-            // Map engine [0,1] onto the 5..100 band after decode.
-            pct: 5.0 + p * 95.0,
-            stage: "transcribing".into(),
-        });
+    let callbacks = Callbacks {
+        on_segment: Box::new(|seg: oas_engine::Segment| {
+            emit(WorkerToCore::Segment {
+                start: seg.start,
+                end: seg.end,
+                text: seg.text,
+                words: seg
+                    .words
+                    .into_iter()
+                    .map(|w| oas_protocol::Word {
+                        start: w.start,
+                        end: w.end,
+                        text: w.text,
+                    })
+                    .collect(),
+            });
+        }),
+        on_progress: Box::new(move |p: f32| {
+            emit(WorkerToCore::Progress {
+                pct: overall_pct(done_share, p),
+                stage: "transcribing".into(),
+            });
+        }),
     };
 
     // Catch engine panics (native crashes surface as unwraps/panics) and report
     // them as a structured error instead of aborting the process silently.
     let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        let mut callbacks = Callbacks {
-            on_segment: &mut on_segment,
-            on_progress: &mut on_progress,
-        };
-        whisper.transcribe(
-            &pcm.samples,
-            pcm.sample_rate,
-            &run_opts,
-            cancel,
-            &mut callbacks,
-        )
+        whisper.transcribe(&pcm.samples, pcm.sample_rate, &run_opts, cancel, callbacks)
     }));
+
+    // A cancelled run aborts inside the engine; that is not a failure. The core
+    // knows it asked for this, and treats the plain exit as the acknowledgement.
+    if cancel.is_cancelled() {
+        return;
+    }
 
     match result {
         Ok(Ok(summary)) => {
@@ -177,4 +228,10 @@ fn run_job(
             reason: "the engine crashed while transcribing".into(),
         }),
     }
+}
+
+/// Whole-file progress in percent: the first 5% is decoding, the rest is split
+/// between the part already done before this run and this run's progress `p`.
+fn overall_pct(done_share: f32, p: f32) -> f32 {
+    5.0 + (done_share + (1.0 - done_share) * p.clamp(0.0, 1.0)) * 95.0
 }

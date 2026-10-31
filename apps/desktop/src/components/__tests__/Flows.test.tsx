@@ -65,7 +65,7 @@ beforeEach(() => {
   });
   c.jobsProbeDurations.mockResolvedValue([120, 240]);
   c.settingsSet.mockResolvedValue({ status: "ok", data: null });
-  c.appVersion.mockResolvedValue({ name: "Open Audio Studio", version: "1.2.3" });
+  c.appVersion.mockResolvedValue({ name: "SynthSpeech", version: "1.2.3" });
   useSettings.setState({ settings: { ...SETTINGS } });
 });
 

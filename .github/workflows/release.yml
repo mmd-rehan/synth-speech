@@ -94,7 +94,7 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: Open Audio Studio ${{ github.ref_name }}
+          releaseName: SynthSpeech ${{ github.ref_name }}
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}

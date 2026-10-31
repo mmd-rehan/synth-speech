@@ -1,4 +1,4 @@
-//! The Open Audio Studio desktop shell.
+//! The SynthSpeech desktop shell.
 //!
 //! This crate wires the React UI to the Rust core over Tauri commands. All IPC
 //! types are generated into `../src/bindings.ts` by `tauri-specta`, so the
@@ -31,7 +31,7 @@ pub struct AppInfo {
 #[specta::specta]
 fn app_version() -> AppInfo {
     AppInfo {
-        name: "Open Audio Studio".to_string(),
+        name: "SynthSpeech".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
@@ -207,5 +207,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running the Open Audio Studio app");
+        .expect("error while running the SynthSpeech app");
 }

@@ -25,7 +25,7 @@ edition = "2021"
 rust-version = "1.82"
 license = "MIT"
 repository = "https://github.com/mmd-rehan/synth-speech"
-authors = ["Open Audio Studio contributors"]
+authors = ["SynthSpeech contributors"]
 
 [workspace.dependencies]
 # Internal crates

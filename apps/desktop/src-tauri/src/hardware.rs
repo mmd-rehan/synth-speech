@@ -147,7 +147,7 @@ pub fn hardware_usage_history(state: State<'_, AppState>) -> Vec<UsageSample> {
 #[specta::specta]
 pub fn copy_diagnostics(state: State<'_, AppState>) -> Result<String, String> {
     let mut out = String::new();
-    out.push_str("Open Audio Studio diagnostics\n");
+    out.push_str("SynthSpeech diagnostics\n");
     out.push_str(&format!("app version: {}\n", env!("CARGO_PKG_VERSION")));
 
     match get_or_build(&state) {

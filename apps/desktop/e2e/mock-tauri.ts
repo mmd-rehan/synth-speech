@@ -68,7 +68,7 @@ export function installMockTauri(options: MockOptions) {
     }));
 
   const handlers: Record<string, (args: Record<string, never>) => unknown> = {
-    app_version: () => ({ name: "Open Audio Studio", version: "0.1.0" }),
+    app_version: () => ({ name: "SynthSpeech", version: "0.1.0" }),
     settings_get: () => state.settings,
     settings_set: (a) => {
       state.settings = a.settings;

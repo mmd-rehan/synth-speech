@@ -1,6 +1,6 @@
 <div align="center">
 
-# Open Audio Studio
+# SynthSpeech
 
 **Run speech AI models locally, on your own machine.**
 
@@ -9,7 +9,7 @@
 
 </div>
 
-Open Audio Studio is a free, open-source desktop app that runs OpenAI Whisper and
+SynthSpeech is a free, open-source desktop app that runs OpenAI Whisper and
 other open speech models **fully on your computer**. It inspects your hardware,
 tells you honestly how each model will perform *before* you download it, and runs
 many transcription jobs in parallel without freezing or overheating your machine.

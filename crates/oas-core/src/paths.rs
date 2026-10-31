@@ -20,7 +20,7 @@ pub struct Paths {
 
 impl Paths {
     /// Build the layout rooted at `root` (e.g. `~/Library/Application Support/
-    /// Open Audio Studio` on macOS, resolved by the caller).
+    /// SynthSpeech` on macOS, resolved by the caller).
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Paths {
             root: root.into(),
@@ -109,8 +109,8 @@ mod tests {
 
     #[test]
     fn handles_spaces_in_root() {
-        // Mirrors the real macOS root "Application Support/Open Audio Studio".
-        let root = PathBuf::from("/Users/a b/Application Support/Open Audio Studio");
+        // Mirrors the real macOS root "Application Support/SynthSpeech".
+        let root = PathBuf::from("/Users/a b/Application Support/SynthSpeech");
         let p = Paths::new(&root);
         let models = p.models_dir();
         assert!(models.starts_with(&root));
@@ -118,7 +118,7 @@ mod tests {
         // The space-containing component is preserved intact, not split.
         assert!(models
             .components()
-            .any(|c| c.as_os_str() == "Open Audio Studio"));
+            .any(|c| c.as_os_str() == "Application Support"));
     }
 
     #[test]

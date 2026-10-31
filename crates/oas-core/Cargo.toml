@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Domain types, errors, ids, and tracing setup for Open Audio Studio (no I/O)."
+description = "Domain types, errors, ids, and tracing setup for SynthSpeech (no I/O)."
 
 [dependencies]
 serde.workspace = true

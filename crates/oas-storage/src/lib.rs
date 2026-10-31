@@ -1,4 +1,4 @@
-//! SQLite-backed persistence for Open Audio Studio.
+//! SQLite-backed persistence for SynthSpeech.
 //!
 //! Uses a bundled SQLite (no system dependency) and a tiny forward-only
 //! migration runner keyed on `PRAGMA user_version`. A heavier framework can be

@@ -19,7 +19,7 @@ import { useJobs } from "@/lib/jobs";
 
 describe("HomeScreen", () => {
   beforeEach(() => {
-    appVersion.mockResolvedValue({ name: "Open Audio Studio", version: "0.1.0" });
+    appVersion.mockResolvedValue({ name: "SynthSpeech", version: "0.1.0" });
     modelsListInstalled.mockResolvedValue({
       status: "ok",
       data: [{ id: "whisper-tiny" }],

@@ -69,7 +69,7 @@ export function HomeScreen({
     <div className="mx-auto max-w-3xl space-y-6 px-8 py-10">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          {info ? info.name : "Open Audio Studio"}
+          {info ? info.name : "SynthSpeech"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {t("home.tagline")}

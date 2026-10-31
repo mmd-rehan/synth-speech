@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Open Audio Studio desktop app (Tauri 2 shell)."
+description = "SynthSpeech desktop app (Tauri 2 shell)."
 default-run = "oas-desktop"
 
 [lib]

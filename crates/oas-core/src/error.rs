@@ -1,4 +1,4 @@
-//! The single error type for Open Audio Studio.
+//! The single error type for SynthSpeech.
 //!
 //! Every variant carries a **stable machine code** (never change an existing
 //! string — the UI and logs key off it), a human-readable message, and an

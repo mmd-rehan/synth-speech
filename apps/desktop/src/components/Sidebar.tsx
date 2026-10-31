@@ -41,7 +41,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Cpu className="h-4 w-4" />
         </div>
-        <span className="text-sm font-semibold">Open Audio Studio</span>
+        <span className="text-sm font-semibold">SynthSpeech</span>
       </div>
 
       <nav className="flex-1 space-y-1 px-2 py-2" aria-label={t("nav.primary")}>

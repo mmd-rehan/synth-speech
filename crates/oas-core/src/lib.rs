@@ -1,4 +1,4 @@
-//! `oas-core` holds the domain vocabulary shared across Open Audio Studio:
+//! `oas-core` holds the domain vocabulary shared across SynthSpeech:
 //! stable error codes, identifier newtypes, path layout, and logging setup.
 //!
 //! This crate performs no network or heavy filesystem I/O and depends on no

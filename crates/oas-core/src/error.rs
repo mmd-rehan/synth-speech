@@ -31,6 +31,10 @@ pub enum OasError {
     #[error("The GPU could not be initialised: {reason}")]
     GpuInitFailed { reason: String },
 
+    /// The processor lacks instructions the worker was built to use.
+    #[error("This computer's processor does not support {feature}, which SynthSpeech needs.")]
+    UnsupportedCpu { feature: String },
+
     /// A referenced file does not exist.
     #[error("File not found: {path}")]
     FileNotFound { path: String },
@@ -90,6 +94,7 @@ impl OasError {
             OasError::OutOfMemory => "OUT_OF_MEMORY",
             OasError::DecodeFailed { .. } => "DECODE_FAILED",
             OasError::GpuInitFailed { .. } => "GPU_INIT_FAILED",
+            OasError::UnsupportedCpu { .. } => "UNSUPPORTED_CPU",
             OasError::FileNotFound { .. } => "FILE_NOT_FOUND",
             OasError::InvalidInput { .. } => "INVALID_INPUT",
             OasError::Protocol { .. } => "PROTOCOL_ERROR",
@@ -120,6 +125,9 @@ impl OasError {
             }
             OasError::GpuInitFailed { .. } => {
                 Some("The job can still run on the CPU. Check your graphics drivers.")
+            }
+            OasError::UnsupportedCpu { .. } => {
+                Some("SynthSpeech needs a newer processor, from about 2013 or later.")
             }
             OasError::DecodeFailed { .. } => {
                 Some("Try a different file or convert it to WAV, MP3, or FLAC.")
@@ -229,6 +237,12 @@ mod tests {
             (
                 OasError::GpuInitFailed { reason: "x".into() },
                 "GPU_INIT_FAILED",
+            ),
+            (
+                OasError::UnsupportedCpu {
+                    feature: "x".into(),
+                },
+                "UNSUPPORTED_CPU",
             ),
             (
                 OasError::FileNotFound { path: "x".into() },

@@ -156,6 +156,15 @@ describe("SettingsScreen", () => {
     );
   });
 
+  it("lets the user choose CPU only", async () => {
+    const user = userEvent.setup();
+    render(<SettingsScreen />);
+    await user.selectOptions(screen.getByLabelText(/run jobs on/i), "cpu");
+    expect(c.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ gpu_preference: "cpu" }),
+    );
+  });
+
   it("applies the theme and rolls back a failed save", async () => {
     const user = userEvent.setup();
     render(<SettingsScreen />);

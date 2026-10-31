@@ -142,6 +142,12 @@ fn run_job(request: StartRequest, cancel: &CancelToken) {
         resume_from_sec,
     } = request;
 
+    // Checked before any native code runs: without this the worker would die
+    // on an illegal instruction with no explanation.
+    if let Err(e) = require_cpu(host_has_required_cpu()) {
+        return emit_error(&e);
+    }
+
     if engine != EngineKind::WhisperCpp {
         emit_error(&OasError::InvalidInput {
             reason: "this worker build only supports the whisper.cpp engine".into(),
@@ -242,8 +248,47 @@ fn run_job(request: StartRequest, cancel: &CancelToken) {
     }
 }
 
+/// Whether this processor can run the shipped whisper.cpp build (ADR-22).
+fn host_has_required_cpu() -> bool {
+    #[cfg(target_arch = "x86_64")]
+    {
+        std::arch::is_x86_feature_detected!("avx2")
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        true
+    }
+}
+
+fn require_cpu(supported: bool) -> Result<(), OasError> {
+    if supported {
+        Ok(())
+    } else {
+        Err(OasError::UnsupportedCpu {
+            feature: "AVX2".into(),
+        })
+    }
+}
+
 /// Whole-file progress in percent: the first 5% is decoding, the rest is split
 /// between the part already done before this run and this run's progress `p`.
 fn overall_pct(done_share: f32, p: f32) -> f32 {
     5.0 + (done_share + (1.0 - done_share) * p.clamp(0.0, 1.0)) * 95.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_processor_without_avx2_gets_a_plain_error() {
+        let err = require_cpu(false).unwrap_err();
+        assert_eq!(err.code(), "UNSUPPORTED_CPU");
+        assert!(require_cpu(true).is_ok());
+    }
+
+    #[test]
+    fn the_processor_running_the_tests_is_supported() {
+        assert!(host_has_required_cpu());
+    }
 }

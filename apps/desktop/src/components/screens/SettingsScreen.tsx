@@ -155,6 +155,17 @@ export function SettingsScreen() {
       </Section>
 
       <Section title={t("settings.performance")}>
+        <label className="flex items-center justify-between gap-4">
+          <span>{t("settings.gpuPreference")}</span>
+          <select
+            className="h-8 rounded-md border bg-background px-2"
+            value={settings.gpu_preference}
+            onChange={(e) => void change({ gpu_preference: e.target.value })}
+          >
+            <option value="auto">{t("settings.gpuAuto")}</option>
+            <option value="cpu">{t("settings.gpuCpu")}</option>
+          </select>
+        </label>
         <NumberField
           label={t("settings.threadCap")}
           min={1}

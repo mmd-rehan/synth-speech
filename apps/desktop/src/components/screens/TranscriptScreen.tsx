@@ -26,10 +26,20 @@ function Line({
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
+  // Removing a focused input fires blur, so Enter or Escape must settle the edit
+  // once and leave that late blur with nothing to do.
+  const settled = useRef(false);
   const time = formatTimestamp(segment.start_ms ?? 0);
 
-  function commit() {
-    if (draft !== null && draft !== segment.text) onSave(draft);
+  function startEdit() {
+    settled.current = false;
+    setDraft(segment.text);
+  }
+
+  function finish(save: boolean) {
+    if (settled.current) return;
+    settled.current = true;
+    if (save && draft !== null && draft !== segment.text) onSave(draft);
     setDraft(null);
   }
 
@@ -46,7 +56,7 @@ function Line({
         <button
           className="min-w-0 flex-1 cursor-text text-left text-sm leading-6"
           aria-label={`${t("transcript.edit")}: ${segment.text}`}
-          onClick={() => setDraft(segment.text)}
+          onClick={startEdit}
         >
           {segment.text}
         </button>
@@ -57,10 +67,10 @@ function Line({
           className="min-w-0 flex-1 rounded border bg-background px-1 text-sm leading-6"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
+          onBlur={() => finish(true)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") setDraft(null);
+            if (e.key === "Enter") finish(true);
+            if (e.key === "Escape") finish(false);
           }}
         />
       )}

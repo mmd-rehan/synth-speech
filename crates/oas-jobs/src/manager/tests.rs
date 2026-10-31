@@ -679,7 +679,7 @@ fn deleting_a_running_job_waits_for_the_worker() {
     assert!(h.events.removed.lock().unwrap().is_empty());
     h.exit(&id, true, false);
     assert!(h.mgr.get(&id).is_err());
-    assert_eq!(*h.events.removed.lock().unwrap(), [id.clone()]);
+    assert_eq!(*h.events.removed.lock().unwrap(), std::slice::from_ref(&id));
     assert!(h.db.list_jobs().unwrap().is_empty());
     assert!(h.db.list_segments(&id).unwrap().is_empty());
     h.assert_nothing_held();

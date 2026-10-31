@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const jobsUpdateSegment = vi.fn();
@@ -44,6 +44,7 @@ const LINES = [
 
 describe("TranscriptScreen", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     jobsSegments.mockResolvedValue({ status: "ok", data: LINES });
     jobsUpdateSegment.mockResolvedValue({ status: "ok", data: null });
     jobsExport.mockResolvedValue({ status: "ok", data: null });
@@ -75,6 +76,28 @@ describe("TranscriptScreen", () => {
     await user.type(input, "hello world{Enter}");
     expect(jobsUpdateSegment).toHaveBeenCalledWith("a", 0, "hello world");
     expect(await screen.findByText("hello world")).toBeInTheDocument();
+  });
+
+  it("a late blur after Enter does not save twice", async () => {
+    const user = userEvent.setup();
+    render(<TranscriptScreen jobId="a" onBack={() => {}} />);
+    await user.click(await screen.findByText("hello wrld"));
+    const input = screen.getByRole("textbox");
+    await user.type(input, "!");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(jobsUpdateSegment).toHaveBeenCalledTimes(1);
+  });
+
+  it("a late blur after Escape saves nothing", async () => {
+    const user = userEvent.setup();
+    render(<TranscriptScreen jobId="a" onBack={() => {}} />);
+    await user.click(await screen.findByText("hello wrld"));
+    const input = screen.getByRole("textbox");
+    await user.type(input, "oops");
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.blur(input);
+    expect(jobsUpdateSegment).not.toHaveBeenCalled();
   });
 
   it("Escape abandons an edit", async () => {

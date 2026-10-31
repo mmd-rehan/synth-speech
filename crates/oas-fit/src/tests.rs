@@ -324,3 +324,66 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn a_correction_scales_the_speed_and_marks_it_measured() {
+    let plain = compute_fit(&m1_16gb(), None, &tiny(), None, &cfg());
+    assert!(!plain.measured);
+    let tuned = compute_fit_calibrated(&m1_16gb(), None, &tiny(), None, &cfg(), Some(2.0));
+    assert!(tuned.measured);
+    assert!((tuned.rtf_est - plain.rtf_est * 2.0).abs() < 0.0001);
+}
+
+#[test]
+fn a_correction_can_change_the_verdict() {
+    let model = tiny();
+    let fast = compute_fit_calibrated(&m1_16gb(), None, &model, None, &cfg(), Some(0.1));
+    let slow = compute_fit_calibrated(&m1_16gb(), None, &model, None, &cfg(), Some(500.0));
+    assert_eq!(fast.verdict, Verdict::Excellent);
+    assert_eq!(slow.verdict, Verdict::Risky);
+}
+
+#[test]
+fn correction_updates_table() {
+    // (previous, measured, estimated, expected factor, expected samples)
+    let cases = [
+        (None, 0.5, 1.0, 0.5, 1),
+        (Some((0.5, 1)), 1.5, 1.0, 1.0, 2), // average of the two
+        (Some((1.0, 100)), 2.0, 1.0, 1.1, 101), // a long history moves by 1/10
+    ];
+    for (previous, measured, estimated, factor, samples) in cases {
+        let (got, n) = update_correction(previous, measured, estimated).unwrap();
+        assert!((got - factor).abs() < 0.0001, "{previous:?}: {got}");
+        assert_eq!(n, samples);
+    }
+}
+
+#[test]
+fn impossible_measurements_are_refused() {
+    for (measured, estimated) in [
+        (0.0, 1.0),
+        (-1.0, 1.0),
+        (1.0, 0.0),
+        (f32::NAN, 1.0),
+        (f32::INFINITY, 1.0),
+    ] {
+        assert_eq!(update_correction(Some((1.0, 3)), measured, estimated), None);
+    }
+}
+
+proptest! {
+    // However many runs arrive, the factor stays within what was measured.
+    #[test]
+    fn correction_stays_within_the_measured_range(
+        samples in proptest::collection::vec(0.01f32..10.0, 1..60)
+    ) {
+        let mut state = None;
+        for s in &samples {
+            state = update_correction(state, *s, 1.0);
+        }
+        let (factor, _) = state.unwrap();
+        let lo = samples.iter().copied().fold(f32::MAX, f32::min);
+        let hi = samples.iter().copied().fold(f32::MIN, f32::max);
+        prop_assert!(factor >= lo - 0.001 && factor <= hi + 0.001);
+    }
+}

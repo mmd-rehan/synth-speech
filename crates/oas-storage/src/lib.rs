@@ -385,6 +385,51 @@ impl Database {
         Ok(())
     }
 
+    /// A stored speed correction and its sample count.
+    pub fn get_calibration(&self, accelerator: &str, family: &str) -> Result<Option<(f32, u32)>> {
+        let conn = self.lock();
+        conn.query_row(
+            "SELECT correction, samples FROM calibration
+             WHERE accelerator = ?1 AND model_family = ?2",
+            [accelerator, family],
+            |r| Ok((r.get::<_, f64>(0)? as f32, r.get::<_, i64>(1)? as u32)),
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(map_err(other)),
+        })
+    }
+
+    /// Store a speed correction.
+    pub fn save_calibration(
+        &self,
+        accelerator: &str,
+        family: &str,
+        correction: f32,
+        samples: u32,
+        updated_at_ms: u64,
+    ) -> Result<()> {
+        let conn = self.lock();
+        conn.execute(
+            "INSERT INTO calibration (accelerator, model_family, correction, samples, updated_at_ms)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(accelerator, model_family) DO UPDATE SET
+               correction = excluded.correction,
+               samples = excluded.samples,
+               updated_at_ms = excluded.updated_at_ms",
+            rusqlite::params![
+                accelerator,
+                family,
+                correction as f64,
+                samples,
+                updated_at_ms as i64
+            ],
+        )
+        .map_err(map_err)?;
+        Ok(())
+    }
+
     /// Load settings, with defaults for anything unset or unreadable.
     pub fn load_settings(&self) -> Result<Settings> {
         let conn = self.lock();
@@ -567,6 +612,20 @@ mod tests {
             )
             .unwrap();
         assert_eq!(offline, "true");
+    }
+
+    #[test]
+    fn calibration_roundtrips_and_replaces() {
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(db.get_calibration("metal", "whisper").unwrap(), None);
+        db.save_calibration("metal", "whisper", 0.5, 1, 10).unwrap();
+        db.save_calibration("metal", "whisper", 0.75, 2, 20)
+            .unwrap();
+        assert_eq!(
+            db.get_calibration("metal", "whisper").unwrap(),
+            Some((0.75, 2))
+        );
+        assert_eq!(db.get_calibration("cpu_neon", "whisper").unwrap(), None);
     }
 
     #[test]

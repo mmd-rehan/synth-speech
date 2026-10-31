@@ -6,6 +6,7 @@
 //! - `crash`: exit with a failure status after the first segment.
 //! - `hang`: ignore `cancel`, so the core has to kill it.
 //! - `fail`: report a decode error.
+//! - `gpubad`: report a GPU start failure when asked to use the GPU.
 
 #![forbid(unsafe_code)]
 
@@ -42,9 +43,10 @@ fn main() {
                 Ok(CoreToWorker::Start {
                     audio_path,
                     resume_from_sec,
+                    limits,
                     ..
                 }) => {
-                    let _ = tx.send((audio_path, resume_from_sec));
+                    let _ = tx.send((audio_path, resume_from_sec, limits.use_gpu));
                 }
                 Ok(CoreToWorker::Cancel) => flag.store(true, Ordering::SeqCst),
                 Err(_) => {}
@@ -54,9 +56,18 @@ fn main() {
         std::process::exit(0);
     });
 
-    let Ok((audio, resume)) = rx.recv() else {
+    let Ok((audio, resume, use_gpu)) = rx.recv() else {
         return;
     };
+
+    if audio.contains("gpubad") && use_gpu {
+        emit(WorkerToCore::Error {
+            error: ErrorInfo::from(&OasError::GpuInitFailed {
+                reason: "fake".into(),
+            }),
+        });
+        return;
+    }
 
     if audio.contains("fail") {
         emit(WorkerToCore::Error {

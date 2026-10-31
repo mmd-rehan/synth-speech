@@ -89,6 +89,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             jobs::governor_gauge,
             jobs::governor_set_parallel,
             jobs::jobs_probe_durations,
+            jobs::models_test_speed,
             jobs::jobs_allow_playback,
             jobs::jobs_update_segment,
             settings::settings_get,

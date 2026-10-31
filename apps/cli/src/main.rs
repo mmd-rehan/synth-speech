@@ -120,7 +120,7 @@ fn transcribe(
         pcm.sample_rate
     );
 
-    let mut engine = WhisperEngine::load(&PathBuf::from(model))?;
+    let mut engine = WhisperEngine::load(&PathBuf::from(model), false)?;
     let opts = RunOptions {
         language,
         translate,

@@ -47,6 +47,8 @@ function main() {
   const explicitTarget = process.env.OAS_TARGET_TRIPLE;
   const cargoArgs = ["build", "--release", "-p", "oas-worker"];
   if (explicitTarget) cargoArgs.push("--target", triple);
+  // Apple Silicon workers use the GPU. Other platforms ship CPU workers.
+  if (triple === "aarch64-apple-darwin") cargoArgs.push("--features", "metal");
 
   console.log(`[sync-worker] building oas-worker for ${triple}`);
   execFileSync("cargo", cargoArgs, {

@@ -262,6 +262,15 @@ function ModelPanel({
     }
   }
 
+  async function testSpeed() {
+    setBusy(true);
+    try {
+      await commands.modelsTestSpeed(modelId);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function importFromFile() {
     const picked = await open({
       multiple: false,
@@ -307,7 +316,12 @@ function ModelPanel({
           <dt className="text-muted-foreground">Available pool</dt>
           <dd className="text-right">{formatBytes(fit?.pool_bytes)}</dd>
           <dt className="text-muted-foreground">Speed</dt>
-          <dd className="text-right">{speedLabel(fit?.rtf_est)}</dd>
+          <dd className="text-right">
+            {speedLabel(fit?.rtf_est)}{" "}
+            <span className="text-xs text-muted-foreground">
+              ({fit?.measured ? "Measured" : "Estimated"})
+            </span>
+          </dd>
           <dt className="text-muted-foreground">Runs on</dt>
           <dd className="text-right">
             {fit ? acceleratorLabel(fit.accelerator.kind) : "—"}
@@ -331,13 +345,23 @@ function ModelPanel({
               <span className="inline-flex items-center gap-1.5 text-sm text-green-600 dark:text-green-500">
                 <CheckCircle2 className="h-4 w-4" /> Installed
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <Trash2 className="h-4 w-4" /> Delete
-              </Button>
+              <div className="flex gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void testSpeed()}
+                >
+                  Test speed
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+              </div>
             </div>
           )}
           {installed && confirmDelete && (

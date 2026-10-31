@@ -85,6 +85,11 @@ export const commands = {
 	 *  for a file that does not declare one.
 	 */
 	jobsProbeDurations: (paths: string[]) => __TAURI_INVOKE<(number | null)[]>("jobs_probe_durations", { paths }),
+	/**
+	 *  "Test speed": queue the bundled clip with this model. The finished job is
+	 *  measured like any other, which calibrates the model's speed estimate.
+	 */
+	modelsTestSpeed: (modelId: string) => typedError<null, string>(__TAURI_INVOKE("models_test_speed", { modelId })),
 	/**  Let the webview play this job's audio file, and no other file. */
 	jobsAllowPlayback: (id: string) => typedError<string, string>(__TAURI_INVOKE("jobs_allow_playback", { id })),
 	/**  Correct one transcript line. */
@@ -225,7 +230,7 @@ export type FitResult = {
 	headroom_bytes: number | null,
 	/**  The accelerator this prediction assumes. */
 	accelerator: Accelerator,
-	/**  Whether these numbers come from a real calibration run (future work). */
+	/**  Whether the speed is corrected by real runs on this machine. */
 	measured: boolean,
 	/**  Whether download/run must be hard-blocked (needed exceeds total RAM). */
 	hard_blocked: boolean,

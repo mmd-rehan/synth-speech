@@ -76,6 +76,7 @@ impl WorkerSpawner for FakeSpawner {
 struct Recorder {
     states: Mutex<Vec<(String, JobState)>>,
     removed: Mutex<Vec<String>>,
+    measured: Mutex<Vec<(String, f32, bool)>>,
     progress: Mutex<Vec<JobProgress>>,
     segments: Mutex<Vec<JobSegment>>,
     warnings: Mutex<Vec<GovernorWarning>>,
@@ -99,6 +100,10 @@ impl JobEvents for Recorder {
     }
     fn governor_warning(&self, warning: &GovernorWarning) {
         self.warnings.lock().unwrap().push(warning.clone());
+    }
+    fn job_measured(&self, model_id: &str, rtf: f32, used_gpu: bool) {
+        let entry = (model_id.to_string(), rtf, used_gpu);
+        self.measured.lock().unwrap().push(entry);
     }
 }
 
@@ -1102,6 +1107,49 @@ fn manual_mode_is_held_to_the_hard_cap() {
     let cost = JobCost::for_model(model.get("whisper-tiny").unwrap(), Some(60_000), false);
     h.add(1, "whisper-tiny");
     assert_eq!(h.mgr.status().parallel_limit, hard_cap(GIB, cost.mem_bytes));
+}
+
+#[test]
+fn only_clean_whole_runs_feed_calibration() {
+    let metrics = WorkerToCore::Metrics {
+        rtf: 0.25,
+        peak_rss_mib: 1,
+    };
+    let finish = |h: &Harness, id: &str| {
+        h.send(id, metrics.clone());
+        h.send(id, WorkerToCore::Done);
+        h.exit(id, true, false);
+    };
+
+    // A whole run counts.
+    let h = harness();
+    let id = h.add(1, "whisper-tiny").remove(0);
+    h.ready(&id);
+    finish(&h, &id);
+    assert_eq!(
+        *h.events.measured.lock().unwrap(),
+        [("whisper-tiny".to_string(), 0.25, false)]
+    );
+
+    // A clip too short to measure does not.
+    let h = harness();
+    let id = h.add(1, "whisper-tiny").remove(0);
+    h.ready(&id);
+    h.send(&id, WorkerToCore::Audio { duration_sec: 2.0 });
+    finish(&h, &id);
+    assert!(h.events.measured.lock().unwrap().is_empty());
+
+    // Nor does a run resumed part way through.
+    let h = harness();
+    let id = h.add(1, "whisper-tiny").remove(0);
+    h.ready(&id);
+    h.segment(&id, 0.0, 1.0, "x");
+    h.mgr.pause(&id).unwrap();
+    h.exit(&id, true, false);
+    h.mgr.resume(&id).unwrap();
+    h.ready(&id);
+    finish(&h, &id);
+    assert!(h.events.measured.lock().unwrap().is_empty());
 }
 
 #[test]

@@ -46,6 +46,9 @@ const WATCHDOG_COOLDOWN_MS: u64 = 15_000;
 /// Until then its reservation counts on top of live usage, not within it.
 const MODEL_LOAD_SETTLE_MS: u64 = 10_000;
 
+/// Shorter clips are dominated by start-up cost, and would mislead calibration.
+const MIN_MEASURED_AUDIO_MS: u64 = 5_000;
+
 /// A source of the current time.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> u64;
@@ -101,6 +104,9 @@ pub trait JobEvents: Send + Sync {
     fn job_progress(&self, progress: &JobProgress);
     fn job_segments(&self, job_id: &str, segments: &[JobSegment]);
     fn governor_warning(&self, warning: &GovernorWarning);
+    /// A whole file was processed in one run on the given device, so `rtf` is a
+    /// clean measurement of this model on this machine.
+    fn job_measured(&self, _model_id: &str, _rtf: f32, _used_gpu: bool) {}
 }
 
 /// The machine, as far as the governor cares.
@@ -201,6 +207,8 @@ struct Active {
     stop: Option<Stop>,
     stop_deadline_ms: Option<u64>,
     killed_for_timeout: bool,
+    /// This run continues a paused job, so it did not cover the whole file.
+    resumed: bool,
     done: bool,
     error: Option<ErrorInfo>,
     last_progress_emit_ms: u64,
@@ -1061,6 +1069,7 @@ impl Core {
                 stop: None,
                 stop_deadline_ms: None,
                 killed_for_timeout: false,
+                resumed: self.transcript_end(id).0 > 0,
                 done: false,
                 error: None,
                 last_progress_emit_ms: 0,
@@ -1315,6 +1324,7 @@ impl Core {
                 job.progress = 1.0;
                 job.finished_at_ms = Some(now);
             }
+            self.report_measurement(id, &active);
         } else {
             match active.stop {
                 Some(Stop::Cancel) => {
@@ -1339,6 +1349,18 @@ impl Core {
             }
         } else {
             self.changed(id);
+        }
+    }
+
+    fn report_measurement(&self, id: &str, active: &Active) {
+        let Some(job) = self.jobs.get(id) else {
+            return;
+        };
+        let long_enough = job
+            .duration_ms
+            .is_some_and(|ms| ms >= MIN_MEASURED_AUDIO_MS);
+        if let (Some(rtf), false, true) = (job.rtf, active.resumed, long_enough) {
+            self.events.job_measured(&job.model_id, rtf, active.use_gpu);
         }
     }
 

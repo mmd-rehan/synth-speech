@@ -84,6 +84,16 @@ impl JobEvents for TauriJobEvents {
         }
         .emit(&self.0);
     }
+
+    fn job_measured(&self, model_id: &str, rtf: f32, used_gpu: bool) {
+        // Database and profile work should not run under the job lock.
+        let app = self.0.clone();
+        let model_id = model_id.to_string();
+        std::thread::spawn(move || {
+            let state = app.state::<AppState>();
+            crate::catalog::record_measurement(&state, &model_id, rtf, used_gpu);
+        });
+    }
 }
 
 /// The worker sits next to the app binary in every layout: Tauri copies
@@ -96,33 +106,46 @@ pub fn worker_exe() -> Result<PathBuf, String> {
     Ok(dir.join(format!("oas-worker{}", std::env::consts::EXE_SUFFIX)))
 }
 
+/// Whether jobs should run on the GPU: this build's worker has a backend, the
+/// machine has the matching GPU, and the user has not chosen CPU only.
+fn gpu_worker_usable(profile: &MachineProfile, preference: &str) -> bool {
+    cfg!(all(target_os = "macos", target_arch = "aarch64"))
+        && preference != "cpu"
+        && profile.accel.contains(&Accelerator::MetalGpu)
+}
+
 /// Build the manager and recover the queue from the last run.
 pub fn create_manager(
     app: AppHandle,
     state: &AppState,
     profile: MachineProfile,
 ) -> Result<JobManager, String> {
-    // Workers run on the CPU, so estimates must not assume a GPU.
-    let cpu = profile.accel.iter().find(|a| {
-        matches!(
-            a,
-            Accelerator::CpuAvx2 | Accelerator::CpuAvx512 | Accelerator::CpuNeon
-        )
-    });
-    let cpu = cpu.cloned();
+    // Only Apple Silicon workers are built with a GPU backend so far, so
+    // elsewhere estimates must not assume a GPU.
+    let use_gpu = gpu_worker_usable(&profile, &state.settings().gpu_preference);
+    let accelerator = profile
+        .accel
+        .iter()
+        .find(|a| {
+            use_gpu
+                || matches!(
+                    a,
+                    Accelerator::CpuAvx2 | Accelerator::CpuAvx512 | Accelerator::CpuNeon
+                )
+        })
+        .cloned();
     let catalog = state.catalog.clone();
     let machine = Machine {
         total_ram: profile.memory.total_bytes,
         logical_cores: profile.cpu.logical_cores,
-        // No GPU worker builds exist yet.
-        gpu_slots: 0,
+        gpu_slots: u32::from(use_gpu),
     };
     let rtf_estimate = {
         let catalog = catalog.clone();
         Box::new(move |model_id: &str| {
             catalog.get(model_id).map_or(1.0, |model| {
                 let config = FitConfig::default();
-                compute_fit(&profile, None, model, cpu.clone(), &config).rtf_est
+                compute_fit(&profile, None, model, accelerator.clone(), &config).rtf_est
             })
         })
     };
@@ -182,6 +205,36 @@ pub async fn jobs_probe_durations(paths: Vec<String>) -> Vec<Option<f64>> {
         .iter()
         .map(|p| probe_duration_ms(p).map(|ms| ms as f64 / 1000.0))
         .collect()
+}
+
+/// "Test speed": queue the bundled clip with this model. The finished job is
+/// measured like any other, which calibrates the model's speed estimate.
+#[tauri::command]
+#[specta::specta]
+pub async fn models_test_speed(
+    app: AppHandle,
+    jobs: State<'_, JobManager>,
+    model_id: String,
+) -> Result<(), String> {
+    let clip = app
+        .path()
+        .resolve(
+            "resources/speed-test-clip.wav",
+            tauri::path::BaseDirectory::Resource,
+        )
+        .map_err(|e| format!("could not find the test clip: {e}"))?;
+    let path = clip.to_string_lossy().into_owned();
+    let durations = vec![probe_duration_ms(&path)];
+    let request = JobRequest {
+        paths: vec![path],
+        model_id,
+        language: Some("en".into()),
+        translate: false,
+        word_timestamps: false,
+        priority: Priority::High,
+    };
+    jobs.create(request, durations).map_err(user_error)?;
+    Ok(())
 }
 
 /// Every job, in queue order.

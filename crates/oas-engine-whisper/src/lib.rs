@@ -55,8 +55,9 @@ pub struct WhisperEngine {
 }
 
 impl WhisperEngine {
-    /// Load a ggml model file.
-    pub fn load(model_path: &Path) -> Result<Self> {
+    /// Load a ggml model file, on the GPU if `use_gpu` is set and this build
+    /// has a GPU backend.
+    pub fn load(model_path: &Path, use_gpu: bool) -> Result<Self> {
         let path = model_path.to_str().ok_or_else(|| OasError::InvalidInput {
             reason: "model path is not valid UTF-8".into(),
         })?;
@@ -65,8 +66,17 @@ impl WhisperEngine {
                 model_id: model_path.display().to_string(),
             });
         }
-        let ctx = WhisperContext::new_with_params(path, WhisperContextParameters::default())
-            .map_err(map_err)?;
+        let mut params = WhisperContextParameters::default();
+        params.use_gpu(use_gpu);
+        let ctx = WhisperContext::new_with_params(path, params).map_err(|e| {
+            if use_gpu {
+                OasError::GpuInitFailed {
+                    reason: e.to_string(),
+                }
+            } else {
+                map_err(e)
+            }
+        })?;
         Ok(WhisperEngine {
             ctx,
             id: "whisper.cpp".to_string(),

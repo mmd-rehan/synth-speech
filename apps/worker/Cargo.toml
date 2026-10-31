@@ -12,6 +12,11 @@ description = "Inference worker process (Tauri sidecar). Speaks the JSONL protoc
 name = "oas-worker"
 path = "src/main.rs"
 
+[features]
+metal = ["oas-engine-whisper/metal"]
+vulkan = ["oas-engine-whisper/vulkan"]
+cuda = ["oas-engine-whisper/cuda"]
+
 [dependencies]
 oas-core.workspace = true
 oas-protocol.workspace = true

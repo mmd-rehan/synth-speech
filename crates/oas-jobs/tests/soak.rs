@@ -326,6 +326,33 @@ fn a_dead_core_takes_its_workers_with_it_and_the_next_start_recovers() {
 }
 
 #[test]
+fn a_forced_gpu_failure_falls_back_to_cpu_and_the_job_completes() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = database(dir.path());
+    let catalog = Catalog::from_json(include_str!("../../../catalog/models.v1.json")).unwrap();
+    let spawner = ProcessSpawner::new(PathBuf::from(env!("CARGO_BIN_EXE_oas-fake-worker")));
+    let mgr = JobManager::new(ManagerDeps {
+        db,
+        catalog,
+        paths: Paths::new(dir.path()),
+        clock: Arc::new(SystemClock),
+        spawner: Box::new(spawner),
+        events: Arc::new(Quiet),
+        machine: Machine {
+            gpu_slots: 1,
+            ..machine()
+        },
+        rtf_estimate: Box::new(|_| 0.1),
+    })
+    .unwrap();
+    mgr.tick(calm());
+    let id = add(&mgr, files(dir.path(), &["gpubad clip.wav".to_string()])).remove(0);
+    wait_until(&mgr, "the job to finish", all_settled);
+    assert_eq!(mgr.get(&id).unwrap().state, JobState::Completed);
+    assert_eq!(mgr.segments(&id).unwrap().len(), 3);
+}
+
+#[test]
 fn a_missing_worker_binary_fails_the_job_with_a_clear_error() {
     let dir = tempfile::tempdir().unwrap();
     let db = database(dir.path());

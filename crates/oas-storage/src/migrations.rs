@@ -57,6 +57,15 @@ const MIGRATIONS: &[&str] = &[
         key        TEXT PRIMARY KEY,
         value_json TEXT NOT NULL
     );",
+    // V5: measured speed corrections for this machine.
+    "CREATE TABLE calibration (
+        accelerator   TEXT    NOT NULL,
+        model_family  TEXT    NOT NULL,
+        correction    REAL    NOT NULL,
+        samples       INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (accelerator, model_family)
+    );",
 ];
 
 /// The schema version after all migrations are applied.

@@ -163,7 +163,7 @@ fn run_job(request: StartRequest, cancel: &CancelToken) {
     }
 
     // Load the model.
-    let mut whisper = match WhisperEngine::load(&PathBuf::from(&model_path)) {
+    let mut whisper = match WhisperEngine::load(&PathBuf::from(&model_path), limits.use_gpu) {
         Ok(e) => e,
         Err(e) => return emit_error(&e),
     };

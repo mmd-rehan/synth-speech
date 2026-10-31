@@ -79,7 +79,7 @@ pub struct FitResult {
     pub headroom_bytes: u64,
     /// The accelerator this prediction assumes.
     pub accelerator: Accelerator,
-    /// Whether these numbers come from a real calibration run (future work).
+    /// Whether the speed is corrected by real runs on this machine.
     pub measured: bool,
     /// Whether download/run must be hard-blocked (needed exceeds total RAM).
     pub hard_blocked: bool,
@@ -213,6 +213,46 @@ fn available_ram(profile: &MachineProfile, usage: Option<&UsageSample>) -> u64 {
         .unwrap_or(profile.memory.available_bytes)
 }
 
+/// Samples after which the correction stops weighting new runs less, so it
+/// keeps following the machine as it changes.
+const CALIBRATION_WINDOW: u32 = 10;
+
+/// A stable name for an accelerator, the key for calibration.
+pub fn accelerator_key(accel: &Accelerator) -> &'static str {
+    match accel {
+        Accelerator::MetalGpu => "metal",
+        Accelerator::CoreMl => "coreml",
+        Accelerator::Cuda { .. } => "cuda",
+        Accelerator::Vulkan => "vulkan",
+        Accelerator::DirectMl => "directml",
+        Accelerator::CpuAvx2 => "cpu_avx2",
+        Accelerator::CpuAvx512 => "cpu_avx512",
+        Accelerator::CpuNeon => "cpu_neon",
+    }
+}
+
+/// Fold a measured run into a correction factor (a bounded moving average of
+/// measured over estimated speed). Returns the new factor and sample count, or
+/// `None` for a measurement that cannot be real.
+pub fn update_correction(
+    previous: Option<(f32, u32)>,
+    measured_rtf: f32,
+    estimated_rtf: f32,
+) -> Option<(f32, u32)> {
+    let usable = measured_rtf.is_finite() && estimated_rtf.is_finite();
+    if !usable || measured_rtf <= 0.0 || estimated_rtf <= 0.0 {
+        return None;
+    }
+    let sample = measured_rtf / estimated_rtf;
+    Some(match previous {
+        None => (sample, 1),
+        Some((old, samples)) => {
+            let weight = (samples + 1).min(CALIBRATION_WINDOW) as f32;
+            (old + (sample - old) / weight, samples.saturating_add(1))
+        }
+    })
+}
+
 /// Compute the full fit for `model` on `profile`, optionally overriding the
 /// accelerator and factoring in the current `usage`.
 pub fn compute_fit(
@@ -221,6 +261,19 @@ pub fn compute_fit(
     model: &ModelEntry,
     override_accel: Option<Accelerator>,
     config: &FitConfig,
+) -> FitResult {
+    compute_fit_calibrated(profile, usage, model, override_accel, config, None)
+}
+
+/// [`compute_fit`] with a measured correction factor for this machine, which
+/// multiplies the estimated speed and marks the result as measured.
+pub fn compute_fit_calibrated(
+    profile: &MachineProfile,
+    usage: Option<&UsageSample>,
+    model: &ModelEntry,
+    override_accel: Option<Accelerator>,
+    config: &FitConfig,
+    correction: Option<f32>,
 ) -> FitResult {
     let accel = choose_accelerator(profile, override_accel);
     let gpu_used = is_gpu(&accel) && model.gpu_capable;
@@ -276,8 +329,11 @@ pub fn compute_fit(
     // Step 2: speed estimate.
     let (rtf_ref, ref_score) = choose_reference(model, &accel);
     let m_score = machine_score(profile, &accel).max(1.0);
-    let rtf_est =
-        rtf_ref * (ref_score / m_score) * thermal_factor(profile.thermal) * battery_factor(profile);
+    let rtf_est = rtf_ref
+        * (ref_score / m_score)
+        * thermal_factor(profile.thermal)
+        * battery_factor(profile)
+        * correction.unwrap_or(1.0);
 
     // Step 4: verdict.
     let verdict = if !fits {
@@ -340,7 +396,7 @@ pub fn compute_fit(
         pool_bytes: pool,
         headroom_bytes: headroom,
         accelerator: accel,
-        measured: false,
+        measured: correction.is_some(),
         hard_blocked,
         summary,
         reasons,

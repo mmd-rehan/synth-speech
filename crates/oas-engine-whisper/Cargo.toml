@@ -8,6 +8,12 @@ repository.workspace = true
 authors.workspace = true
 description = "whisper.cpp backend via whisper-rs (CPU build)."
 
+[features]
+# GPU backends, chosen per worker build. CPU is always available.
+metal = ["whisper-rs/metal"]
+vulkan = ["whisper-rs/vulkan"]
+cuda = ["whisper-rs/cuda"]
+
 [dependencies]
 oas-core.workspace = true
 oas-engine.workspace = true

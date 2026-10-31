@@ -22,8 +22,20 @@ many transcription jobs in parallel without freezing or overheating your machine
   could lock up your computer.
 - **Cross-platform.** macOS and Windows are first-class; Linux is best-effort.
 
-> **Status:** early development. The app is being built milestone by milestone and
-> is not yet ready for general use.
+> **Status:** pre-release. Transcription, the job queue, and Metal acceleration work.
+> There are no signed installers yet, so for now you build it yourself.
+
+## What your computer needs
+
+| | Minimum | Good |
+|---|---|---|
+| Memory | 8 GB | 16 GB or more |
+| Mac | Apple Silicon | Any M-series chip, which uses the GPU |
+| Windows or Linux | x64 CPU with AVX2 (most from 2013 on) | 8 or more CPU cores |
+
+Windows and Linux run on the CPU today. Windows is currently much slower than
+macOS and Linux. The app shows you what to expect from each model on your own
+machine before you download it.
 
 ## Platforms
 

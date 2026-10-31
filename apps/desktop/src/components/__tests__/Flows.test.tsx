@@ -15,6 +15,7 @@ const c = vi.hoisted(() => ({
   settingsMoveModels: vi.fn(),
   spawnWorkerProbe: vi.fn(),
   jobsPauseAll: vi.fn(),
+  appVersion: vi.fn(),
 }));
 vi.mock("@/bindings", () => ({ commands: c, events: {} }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
@@ -64,6 +65,7 @@ beforeEach(() => {
   });
   c.jobsProbeDurations.mockResolvedValue([120, 240]);
   c.settingsSet.mockResolvedValue({ status: "ok", data: null });
+  c.appVersion.mockResolvedValue({ name: "Open Audio Studio", version: "1.2.3" });
   useSettings.setState({ settings: { ...SETTINGS } });
 });
 
@@ -174,6 +176,13 @@ describe("SettingsScreen", () => {
       target: { value: "0" },
     });
     expect(c.settingsSet).not.toHaveBeenCalled();
+  });
+
+  it("shows the version, license, and where to get help", async () => {
+    render(<SettingsScreen />);
+    expect(await screen.findByText("Version 1.2.3")).toBeInTheDocument();
+    expect(screen.getByText(/MIT license/)).toBeInTheDocument();
+    expect(screen.getByText(/no audio and no transcripts/)).toBeInTheDocument();
   });
 
   it("checks the worker", async () => {

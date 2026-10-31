@@ -57,11 +57,19 @@ export function SettingsScreen() {
   const update = useSettings((s) => s.update);
   const [error, setError] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
   const [probe, setProbe] = useState<
     | { kind: "idle" | "running" }
     | { kind: "ok"; version: string }
     | { kind: "error"; message: string }
   >({ kind: "idle" });
+
+  useEffect(() => {
+    commands
+      .appVersion()
+      .then((info) => setVersion(info.version))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!settings) void load().catch(() => setError(t("error.unknown")));
@@ -203,6 +211,13 @@ export function SettingsScreen() {
           )}
         </div>
         {probe.kind === "error" && <ErrorNotice message={probe.message} />}
+      </Section>
+
+      <Section title={t("settings.about")}>
+        {version && <p>{t("settings.version", { version })}</p>}
+        <p className="text-muted-foreground">{t("settings.license")}</p>
+        <p className="text-muted-foreground">{t("settings.source")}</p>
+        <p className="text-muted-foreground">{t("settings.crashHelp")}</p>
       </Section>
     </div>
   );

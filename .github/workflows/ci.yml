@@ -81,32 +81,47 @@ jobs:
         shell: bash
         run: bash scripts/check.sh
 
-  # Proves the GPU worker compiles. It needs a real GPU to run, so nothing runs it
-  # here, and it is not bundled until it has been tested on one.
-  vulkan-worker:
-    name: Build Vulkan worker (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-22.04]
+  # Known vulnerabilities, licenses, and where dependencies come from.
+  dependencies:
+    name: Dependency policy
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
+      - name: Install tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Check Rust dependencies
+        run: cargo deny check licenses advisories bans sources
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check UI dependencies
+        working-directory: apps/desktop
+        run: pnpm audit --prod
+
+  # Proves the GPU worker compiles. It needs a real GPU to run, so nothing runs it
+  # here, and it is not bundled until it has been tested on one.
+  vulkan-worker:
+    name: Build Vulkan worker (Linux)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake clang libclang-dev libvulkan-dev
-
-      - name: Point bindgen at libclang (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
-
-      - name: Load the MSVC environment (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install the Vulkan SDK
         uses: humbletim/install-vulkan-sdk@v1.2
@@ -189,24 +204,6 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Load the MSVC environment (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      # MSVC compiles ggml's hot loops far more slowly than clang.
-      - name: Build whisper.cpp with clang-cl (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          {
-            echo "CMAKE_GENERATOR=Ninja"
-            echo "CMAKE_C_COMPILER=clang-cl"
-            echo "CMAKE_CXX_COMPILER=clang-cl"
-            echo "CMAKE_CXX_FLAGS=/EHsc"
-            # Git Bash puts its own `link` ahead of the MSVC linker on PATH.
-            echo "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=lld-link"
-          } >> "$GITHUB_ENV"
-
       - name: Target AVX2 as shipped builds do
         if: runner.arch == 'X64'
         shell: bash
@@ -222,7 +219,7 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: real-inference-clang-v1
+          prefix-key: real-inference-simd-v1
 
       - name: Cache test model
         uses: actions/cache@v4

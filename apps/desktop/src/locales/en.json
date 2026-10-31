@@ -77,7 +77,12 @@
     "retention": "Delete finished jobs after this many days (0 keeps them forever)",
     "checkWorker": "Check worker",
     "workerReady": "Worker ready (v{{version}})",
-    "saved": "Saved"
+    "saved": "Saved",
+    "about": "About",
+    "version": "Version {{version}}",
+    "license": "Open Audio Studio is free and open source under the MIT license. Third party licenses are listed with each release.",
+    "source": "Source code: github.com/mmd-rehan/synth-speech",
+    "crashHelp": "If the app misbehaves, use Copy diagnostics on the Machine screen and include it in a GitHub issue. It contains no audio and no transcripts."
   },
   "palette": {
     "label": "Command palette",

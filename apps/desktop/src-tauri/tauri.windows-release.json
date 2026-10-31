@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/speed-test-clip.wav": "resources/speed-test-clip.wav",
+      "binaries/vcomp140.dll": "vcomp140.dll",
+      "binaries/vcruntime140.dll": "vcruntime140.dll",
+      "binaries/vcruntime140_1.dll": "vcruntime140_1.dll",
+      "binaries/msvcp140.dll": "msvcp140.dll"
+    }
+  }
+}

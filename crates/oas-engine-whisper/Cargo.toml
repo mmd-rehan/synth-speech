@@ -13,6 +13,7 @@ description = "whisper.cpp backend via whisper-rs (CPU build)."
 metal = ["whisper-rs/metal"]
 vulkan = ["whisper-rs/vulkan"]
 cuda = ["whisper-rs/cuda"]
+openmp = ["whisper-rs/openmp"]
 
 [dependencies]
 oas-core.workspace = true

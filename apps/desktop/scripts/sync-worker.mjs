@@ -4,7 +4,7 @@
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +37,14 @@ function portableSimdFlags(triple) {
   };
 }
 
+/** Run time libraries the Windows worker needs, which a clean PC may not have. */
+const WINDOWS_RUNTIME_DLLS = [
+  "vcomp140.dll",
+  "vcruntime140.dll",
+  "vcruntime140_1.dll",
+  "msvcp140.dll",
+];
+
 function main() {
   const triple = targetTriple();
   const isWindows = triple.includes("windows");
@@ -49,6 +57,8 @@ function main() {
   if (explicitTarget) cargoArgs.push("--target", triple);
   // Apple Silicon workers use the GPU. Other platforms ship CPU workers.
   if (triple === "aarch64-apple-darwin") cargoArgs.push("--features", "metal");
+  // ggml's own thread pool is costly on Windows (ADR-24).
+  if (isWindows) cargoArgs.push("--features", "openmp");
 
   console.log(`[sync-worker] building oas-worker for ${triple}`);
   execFileSync("cargo", cargoArgs, {
@@ -68,6 +78,12 @@ function main() {
 
   copyFileSync(src, dest);
   console.log(`[sync-worker] copied -> ${dest}`);
+
+  if (isWindows && process.env.SystemRoot) {
+    for (const dll of WINDOWS_RUNTIME_DLLS) {
+      copyFileSync(join(process.env.SystemRoot, "System32", dll), resolve(destDir, dll));
+    }
+  }
 }
 
 main();

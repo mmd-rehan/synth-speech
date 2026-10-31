@@ -28,7 +28,7 @@ jobs:
           - os: macos-15-intel
             args: --bundles dmg
           - os: windows-latest
-            args: --bundles nsis,msi
+            args: --bundles nsis,msi --config src-tauri/tauri.windows-release.json
           - os: ubuntu-22.04
             args: --bundles appimage,deb,rpm
 
@@ -95,6 +95,23 @@ jobs:
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
+
+      - name: Install on Windows and start the worker
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          Start-Process -Wait -FilePath $installer.FullName -ArgumentList '/S'
+          $dir = "$env:LOCALAPPDATA\SynthSpeech"
+          Get-ChildItem $dir | Select-Object Name, Length
+          foreach ($dll in 'vcomp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
+            if (-not (Test-Path "$dir\$dll")) { throw "$dll was not installed" }
+          }
+          pip install --quiet pefile
+          python -c "import pefile,sys; print(sorted(i.dll.decode() for i in pefile.PE(sys.argv[1]).DIRECTORY_ENTRY_IMPORT))" "$dir\oas-worker.exe"
+          $ready = '' | & "$dir\oas-worker.exe"
+          Write-Output $ready
+          if ($ready -notmatch 'ready') { throw 'the installed worker did not start' }
 
   licenses:
     name: Licenses and SBOM

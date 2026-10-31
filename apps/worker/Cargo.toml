@@ -16,6 +16,7 @@ path = "src/main.rs"
 metal = ["oas-engine-whisper/metal"]
 vulkan = ["oas-engine-whisper/vulkan"]
 cuda = ["oas-engine-whisper/cuda"]
+openmp = ["oas-engine-whisper/openmp"]
 
 [dependencies]
 oas-core.workspace = true

@@ -12,7 +12,7 @@ use oas_jobs::{
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::hardware::AppState;
@@ -128,8 +128,7 @@ pub fn create_manager(
 }
 
 /// Live signals for the governor from a usage sample.
-pub fn signals_from(sample: &UsageSample, on_battery: bool) -> Signals {
-    const PAUSE_ON_BATTERY_BELOW_PCT: u8 = 20;
+pub fn signals_from(sample: &UsageSample, on_battery: bool, battery_floor_pct: u8) -> Signals {
     Signals {
         available_ram: sample.ram_available_bytes,
         swap_used: sample.swap_used_bytes,
@@ -138,7 +137,7 @@ pub fn signals_from(sample: &UsageSample, on_battery: bool) -> Signals {
         battery_low: on_battery
             && sample
                 .battery_pct
-                .is_some_and(|pct| pct < PAUSE_ON_BATTERY_BELOW_PCT),
+                .is_some_and(|pct| pct < battery_floor_pct),
     }
 }
 
@@ -153,14 +152,23 @@ pub async fn jobs_create(
     jobs: State<'_, JobManager>,
     request: JobRequest,
 ) -> Result<Vec<Job>, String> {
-    let durations = request
-        .paths
-        .iter()
-        .map(|p| {
-            oas_audio::probe_duration_sec(std::path::Path::new(p)).map(|s| (s * 1000.0) as u64)
-        })
-        .collect();
+    let durations = request.paths.iter().map(|p| probe_duration_ms(p)).collect();
     jobs.create(request, durations).map_err(user_error)
+}
+
+fn probe_duration_ms(path: &str) -> Option<u64> {
+    oas_audio::probe_duration_sec(std::path::Path::new(path)).map(|s| (s * 1000.0) as u64)
+}
+
+/// Audio lengths in seconds, for the time estimate before adding files. `None`
+/// for a file that does not declare one.
+#[tauri::command]
+#[specta::specta]
+pub async fn jobs_probe_durations(paths: Vec<String>) -> Vec<Option<f64>> {
+    paths
+        .iter()
+        .map(|p| probe_duration_ms(p).map(|ms| ms as f64 / 1000.0))
+        .collect()
 }
 
 /// Every job, in queue order.
@@ -174,6 +182,33 @@ pub fn jobs_list(jobs: State<'_, JobManager>) -> Vec<Job> {
 #[specta::specta]
 pub fn jobs_get(jobs: State<'_, JobManager>, id: String) -> Result<Job, String> {
     jobs.get(&id).map_err(user_error)
+}
+
+/// Let the webview play this job's audio file, and no other file.
+#[tauri::command]
+#[specta::specta]
+pub fn jobs_allow_playback(
+    app: AppHandle,
+    jobs: State<'_, JobManager>,
+    id: String,
+) -> Result<String, String> {
+    let path = jobs.get(&id).map_err(user_error)?.input_path;
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+/// Correct one transcript line.
+#[tauri::command]
+#[specta::specta]
+pub fn jobs_update_segment(
+    jobs: State<'_, JobManager>,
+    id: String,
+    idx: u32,
+    text: String,
+) -> Result<(), String> {
+    jobs.update_segment(&id, idx, &text).map_err(user_error)
 }
 
 /// A job's stored transcript.

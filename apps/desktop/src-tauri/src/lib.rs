@@ -8,6 +8,7 @@ mod catalog;
 mod downloads;
 mod hardware;
 mod jobs;
+mod settings;
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -87,6 +88,12 @@ fn specta_builder() -> Builder<tauri::Wry> {
             jobs::governor_get_status,
             jobs::governor_gauge,
             jobs::governor_set_parallel,
+            jobs::jobs_probe_durations,
+            jobs::jobs_allow_playback,
+            jobs::jobs_update_segment,
+            settings::settings_get,
+            settings::settings_set,
+            settings::settings_move_models,
         ])
         .events(collect_events![
             downloads::DownloadProgress,
@@ -150,27 +157,48 @@ pub fn run() {
                 .app_data_dir()
                 .map_err(|e| format!("could not resolve the app data directory: {e}"))?;
             let paths = Paths::new(root);
-            for dir in paths.required_dirs() {
-                std::fs::create_dir_all(&dir)
-                    .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
-            }
+            std::fs::create_dir_all(paths.root())
+                .map_err(|e| format!("could not create the app folder: {e}"))?;
 
             // Logging to the app data dir, then the database.
+            std::fs::create_dir_all(paths.logs_dir())
+                .map_err(|e| format!("could not create the logs folder: {e}"))?;
             let log_guard = oas_core::telemetry::init(&paths.logs_dir(), "oas-desktop");
             let db = oas_storage::Database::open(&paths.database_file())
                 .map(std::sync::Arc::new)
                 .map_err(|e| e.user_message())?;
+
+            // Settings can move the models folder, so they come before the layout.
+            let settings = db.load_settings().map_err(|e| e.user_message())?;
+            let paths = match &settings.models_dir {
+                Some(dir) => paths.with_models_dir(dir),
+                None => paths,
+            };
+            for dir in paths.required_dirs() {
+                std::fs::create_dir_all(&dir)
+                    .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+            }
 
             // The catalog is embedded at build time and validated on load.
             let catalog =
                 oas_catalog::Catalog::from_json(include_str!("../../../../catalog/models.v1.json"))
                     .map_err(|e| e.user_message())?;
 
-            app.manage(hardware::AppState::new(db, paths, catalog, log_guard));
+            app.manage(hardware::AppState::new(
+                db,
+                paths,
+                catalog,
+                settings.clone(),
+                log_guard,
+            ));
             let state = app.state::<hardware::AppState>();
             downloads::reconcile(state.inner());
             let profile = hardware::current_profile(state.inner())?;
             let jobs = jobs::create_manager(app.handle().clone(), state.inner(), profile)?;
+            settings::apply(&jobs, &settings);
+            if let Err(e) = jobs.purge_finished_older_than(settings.retention_days) {
+                tracing::error!(error = %e, "could not remove old jobs");
+            }
             jobs.start();
             app.manage(jobs);
             hardware::spawn_usage_monitor(app.handle().clone());

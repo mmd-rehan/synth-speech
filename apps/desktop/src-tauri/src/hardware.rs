@@ -23,6 +23,7 @@ pub struct AppState {
     pub paths: Paths,
     pub catalog: oas_catalog::Catalog,
     pub downloads: crate::downloads::DownloadManager,
+    settings: Mutex<oas_storage::Settings>,
     probe: Mutex<RealProbe>,
     history: Mutex<UsageHistory>,
     visible: AtomicBool,
@@ -35,6 +36,7 @@ impl AppState {
         db: Arc<Database>,
         paths: Paths,
         catalog: oas_catalog::Catalog,
+        settings: oas_storage::Settings,
         log_guard: LogGuard,
     ) -> Self {
         AppState {
@@ -42,11 +44,22 @@ impl AppState {
             paths,
             catalog,
             downloads: crate::downloads::DownloadManager::default(),
+            settings: Mutex::new(settings),
             probe: Mutex::new(RealProbe::new()),
             history: Mutex::new(UsageHistory::new()),
             visible: AtomicBool::new(true),
             _log_guard: log_guard,
         }
+    }
+
+    /// The current settings.
+    pub fn settings(&self) -> oas_storage::Settings {
+        lock(&self.settings).clone()
+    }
+
+    /// Replace the current settings in memory (the caller saves them).
+    pub fn set_settings(&self, settings: oas_storage::Settings) {
+        *lock(&self.settings) = settings;
     }
 
     pub fn set_visible(&self, visible: bool) {
@@ -207,7 +220,12 @@ pub fn spawn_usage_monitor(app: AppHandle) {
             let mut busy = false;
             if let Some(jobs) = app.try_state::<oas_jobs::JobManager>() {
                 let on_battery = lock(&state.probe).power_info().on_battery;
-                jobs.tick(crate::jobs::signals_from(&sample, on_battery));
+                let battery_floor = state.settings().pause_on_battery_below;
+                jobs.tick(crate::jobs::signals_from(
+                    &sample,
+                    on_battery,
+                    battery_floor,
+                ));
                 busy = jobs.held_resources().0 > 0;
             }
 

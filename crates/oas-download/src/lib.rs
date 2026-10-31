@@ -47,6 +47,43 @@ impl Default for DownloadConfig {
     }
 }
 
+/// Move the models folder to `to`. Everything is copied first, so a full disk
+/// or a failed copy leaves the old folder intact; only then is it removed.
+pub fn relocate_models(from: &Path, to: &Path) -> Result<()> {
+    fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            let target = to.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_tree(&entry.path(), &target)?;
+            } else {
+                std::fs::copy(entry.path(), target)?;
+            }
+        }
+        Ok(())
+    }
+
+    if from == to {
+        return Ok(());
+    }
+    if to.starts_with(from) {
+        return Err(OasError::InvalidInput {
+            reason: "the new folder cannot be inside the current one".into(),
+        });
+    }
+    if from.exists() {
+        if let Err(e) = copy_tree(from, to) {
+            let _ = std::fs::remove_dir_all(to);
+            return Err(e.into());
+        }
+        std::fs::remove_dir_all(from)?;
+    } else {
+        std::fs::create_dir_all(to)?;
+    }
+    Ok(())
+}
+
 /// Progress update (throttled to at most ~4/sec by the engine).
 #[derive(Debug, Clone, Copy)]
 pub struct Progress {

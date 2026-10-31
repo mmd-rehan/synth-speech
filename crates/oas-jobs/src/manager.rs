@@ -551,6 +551,38 @@ impl JobManager {
         core.try_start_next();
     }
 
+    /// Correct a transcript line. Exports use the corrected text.
+    pub fn update_segment(&self, id: &str, idx: u32, text: &str) -> Result<()> {
+        let core = self.core();
+        core.job(id)?;
+        core.db.update_segment_text(id, idx, text)
+    }
+
+    /// Limit threads per job from now on.
+    pub fn set_thread_cap(&self, cap: u32) {
+        self.core().governor.set_thread_cap(cap);
+    }
+
+    /// Delete jobs that finished more than `days` days ago. 0 keeps everything.
+    /// Returns how many were removed.
+    pub fn purge_finished_older_than(&self, days: u32) -> Result<usize> {
+        if days == 0 {
+            return Ok(0);
+        }
+        let mut core = self.core();
+        let cutoff = core.now().saturating_sub(days as u64 * 86_400_000);
+        let old: Vec<String> = core
+            .jobs
+            .values()
+            .filter(|j| j.state.is_terminal() && j.finished_at_ms.is_some_and(|t| t < cutoff))
+            .map(|j| j.id.clone())
+            .collect();
+        for id in &old {
+            core.delete(id)?;
+        }
+        Ok(old.len())
+    }
+
     /// Delete every completed job.
     pub fn clear_completed(&self) -> Result<()> {
         let mut core = self.core();

@@ -107,6 +107,7 @@ pub struct Governor {
     reserved_mem: u64,
     cpu_slots_used: u32,
     gpu_slots_used: u32,
+    thread_cap: u32,
 }
 
 impl Governor {
@@ -116,7 +117,13 @@ impl Governor {
             reserved_mem: 0,
             cpu_slots_used: 0,
             gpu_slots_used: 0,
+            thread_cap: MAX_THREADS_PER_JOB,
         }
+    }
+
+    /// Limit threads per job (the `perf.thread_cap_per_job` setting).
+    pub fn set_thread_cap(&mut self, cap: u32) {
+        self.thread_cap = cap.max(1);
     }
 
     pub fn budgets(&self) -> Budgets {
@@ -138,9 +145,9 @@ impl Governor {
     }
 
     /// `threads_per_job = max(1, floor(cpu_budget / concurrent_jobs_target))`,
-    /// capped at [`MAX_THREADS_PER_JOB`].
+    /// capped by the thread cap.
     pub fn threads_for(&self, concurrent_jobs_target: u32) -> u32 {
-        (self.budgets.cpu_budget / concurrent_jobs_target.max(1)).clamp(1, MAX_THREADS_PER_JOB)
+        (self.budgets.cpu_budget / concurrent_jobs_target.max(1)).clamp(1, self.thread_cap)
     }
 
     /// Whether a job of this memory cost fits right now.
@@ -176,7 +183,7 @@ impl Governor {
                 mem_bytes: cost.mem_bytes,
                 cpu_slots: 0,
                 gpu_slot: true,
-                threads: self.budgets.cpu_budget.clamp(1, MAX_THREADS_PER_JOB),
+                threads: self.budgets.cpu_budget.clamp(1, self.thread_cap),
             }
         } else {
             let threads = self.threads_for(concurrent_jobs_target);

@@ -48,7 +48,7 @@ serde.workspace = true
 tracing.workspace = true
 tokio = { version = "1", features = ["sync"] }
 serde_json.workspace = true
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 specta = { workspace = true, features = ["derive"] }
 specta-typescript.workspace = true

@@ -73,6 +73,13 @@ impl Default for DownloadManager {
     }
 }
 
+impl DownloadManager {
+    /// Whether any download is running.
+    pub fn is_busy(&self) -> bool {
+        !lock(&self.active).is_empty()
+    }
+}
+
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -95,6 +102,10 @@ pub async fn models_download(app: AppHandle, model_id: String) -> Result<(), Str
     {
         let _ = DownloadState::simple(&model_id, "completed").emit(&app);
         return Ok(());
+    }
+
+    if state.settings().offline_mode {
+        return Err(oas_core::OasError::OfflineMode.user_message());
     }
 
     let model = state

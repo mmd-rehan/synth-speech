@@ -223,3 +223,29 @@ fn tempdir(tag: &str) -> PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
+
+#[test]
+fn relocating_models_moves_every_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let from = dir.path().join("models");
+    let to = dir.path().join("big disk").join("modèles");
+    std::fs::create_dir_all(from.join("whisper-tiny")).unwrap();
+    std::fs::write(from.join("whisper-tiny").join("ggml.bin"), b"weights").unwrap();
+
+    crate::relocate_models(&from, &to).unwrap();
+    assert_eq!(
+        std::fs::read(to.join("whisper-tiny").join("ggml.bin")).unwrap(),
+        b"weights"
+    );
+    assert!(!from.exists());
+}
+
+#[test]
+fn relocating_models_refuses_a_folder_inside_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let from = dir.path().join("models");
+    std::fs::create_dir_all(&from).unwrap();
+    let err = crate::relocate_models(&from, &from.join("inner")).unwrap_err();
+    assert_eq!(err.code(), "INVALID_INPUT");
+    assert!(from.exists());
+}

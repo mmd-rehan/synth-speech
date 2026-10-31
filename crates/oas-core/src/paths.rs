@@ -14,13 +14,24 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     root: PathBuf,
+    /// Set when the user moved their models out of the app data folder.
+    models_dir: Option<PathBuf>,
 }
 
 impl Paths {
     /// Build the layout rooted at `root` (e.g. `~/Library/Application Support/
     /// Open Audio Studio` on macOS, resolved by the caller).
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Paths { root: root.into() }
+        Paths {
+            root: root.into(),
+            models_dir: None,
+        }
+    }
+
+    /// The same layout with models kept in `dir` instead of under the root.
+    pub fn with_models_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.models_dir = Some(dir.into());
+        self
     }
 
     /// The app-data root itself.
@@ -30,7 +41,9 @@ impl Paths {
 
     /// Directory holding downloaded model weights.
     pub fn models_dir(&self) -> PathBuf {
-        self.root.join("models")
+        self.models_dir
+            .clone()
+            .unwrap_or_else(|| self.root.join("models"))
     }
 
     /// Directory for rolling log files.
@@ -74,6 +87,16 @@ impl Paths {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relocated_models_dir_leaves_the_rest_in_place() {
+        let paths = Paths::new("/data").with_models_dir("/Volumes/Big Disk/modèles");
+        assert_eq!(
+            paths.models_dir(),
+            PathBuf::from("/Volumes/Big Disk/modèles")
+        );
+        assert_eq!(paths.logs_dir(), PathBuf::from("/data").join("logs"));
+    }
     use crate::ModelId;
 
     #[test]

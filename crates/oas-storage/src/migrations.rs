@@ -52,6 +52,11 @@ const MIGRATIONS: &[&str] = &[
         words_json TEXT,
         PRIMARY KEY (job_id, idx)
     );",
+    // V4: user settings, one JSON value per key.
+    "CREATE TABLE settings (
+        key        TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL
+    );",
 ];
 
 /// The schema version after all migrations are applied.

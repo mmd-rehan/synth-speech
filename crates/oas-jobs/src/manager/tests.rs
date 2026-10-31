@@ -1099,6 +1099,44 @@ fn manual_mode_is_held_to_the_hard_cap() {
 }
 
 #[test]
+fn edited_lines_are_what_gets_exported() {
+    let h = harness();
+    let id = h.add(1, "whisper-tiny").remove(0);
+    h.ready(&id);
+    h.segment(&id, 0.0, 1.0, "helo");
+    h.send(&id, WorkerToCore::Done);
+    h.exit(&id, true, false);
+    h.mgr.update_segment(&id, 0, "hello").unwrap();
+    assert_eq!(h.mgr.render_transcript(&id, "txt").unwrap(), "hello\n");
+}
+
+#[test]
+fn the_thread_cap_setting_limits_new_jobs() {
+    let h = harness();
+    h.mgr.set_thread_cap(2);
+    let id = h.add(1, "whisper-tiny").remove(0);
+    h.ready(&id);
+    let CoreToWorker::Start { limits, .. } = h.start_of(&id) else {
+        panic!("not a start");
+    };
+    assert_eq!(limits.max_threads, 2);
+}
+
+#[test]
+fn retention_removes_only_old_finished_jobs() {
+    let h = harness();
+    h.mgr.set_parallel(ParallelMode::Manual, 1);
+    let ids = h.add(2, "whisper-tiny");
+    h.complete(&ids[0]);
+    assert_eq!(h.mgr.purge_finished_older_than(0).unwrap(), 0);
+    assert_eq!(h.mgr.purge_finished_older_than(1).unwrap(), 0, "too recent");
+    h.advance(2 * 86_400_000);
+    assert_eq!(h.mgr.purge_finished_older_than(1).unwrap(), 1);
+    assert!(h.mgr.get(&ids[0]).is_err());
+    assert!(h.mgr.get(&ids[1]).is_ok(), "an unfinished job stays");
+}
+
+#[test]
 fn export_renders_stored_segments() {
     let h = harness();
     let id = h.add(1, "whisper-tiny").remove(0);

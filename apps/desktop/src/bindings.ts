@@ -80,6 +80,26 @@ export const commands = {
 	governorGauge: (modelId: string, desired: number) => typedError<Gauge, string>(__TAURI_INVOKE("governor_gauge", { modelId, desired })),
 	/**  Choose Auto or Manual mode, and the Manual limit. */
 	governorSetParallel: (mode: ParallelMode, manualMax: number) => __TAURI_INVOKE<void>("governor_set_parallel", { mode, manualMax }),
+	/**
+	 *  Audio lengths in seconds, for the time estimate before adding files. `None`
+	 *  for a file that does not declare one.
+	 */
+	jobsProbeDurations: (paths: string[]) => __TAURI_INVOKE<(number | null)[]>("jobs_probe_durations", { paths }),
+	/**  Let the webview play this job's audio file, and no other file. */
+	jobsAllowPlayback: (id: string) => typedError<string, string>(__TAURI_INVOKE("jobs_allow_playback", { id })),
+	/**  Correct one transcript line. */
+	jobsUpdateSegment: (id: string, idx: number, text: string) => typedError<null, string>(__TAURI_INVOKE("jobs_update_segment", { id, idx, text })),
+	settingsGet: () => __TAURI_INVOKE<Settings_Serialize>("settings_get"),
+	/**
+	 *  Save and apply settings. The models folder cannot change here: use
+	 *  `settings_move_models`, which moves the files too.
+	 */
+	settingsSet: (settings: Settings_Deserialize) => typedError<null, string>(__TAURI_INVOKE("settings_set", { settings })),
+	/**
+	 *  Move the models folder. Refused while jobs or downloads are using it. The
+	 *  app must restart to use the new location.
+	 */
+	settingsMoveModels: (path: string) => typedError<null, string>(__TAURI_INVOKE("settings_move_models", { path })),
 };
 
 /** Events */
@@ -666,6 +686,51 @@ export type RtfReference = {
 	profile: string,
 	/**  Real-time factor: processing time / audio duration (lower is faster). */
 	rtf: number | null,
+};
+
+/**  Everything the user can set. */
+export type Settings = Settings_Serialize | Settings_Deserialize;
+
+/**  Everything the user can set. */
+export type Settings_Deserialize = {
+	/**  `system`, `light`, or `dark`. */
+	theme: string,
+	language: string,
+	first_run_done: boolean,
+	/**  `None` keeps models in the app data folder. */
+	models_dir?: string | null,
+	/**  `auto` or `manual`. */
+	parallel_mode: string,
+	max_parallel_jobs: number,
+	thread_cap_per_job: number,
+	/**  `auto`, or `cpu` to never use a GPU. */
+	gpu_preference: string,
+	/**  Pause the queue on battery below this percent; 0 turns this off. */
+	pause_on_battery_below: number,
+	offline_mode: boolean,
+	/**  Delete finished jobs after this many days; 0 keeps them forever. */
+	retention_days: number,
+};
+
+/**  Everything the user can set. */
+export type Settings_Serialize = {
+	/**  `system`, `light`, or `dark`. */
+	theme: string,
+	language: string,
+	first_run_done: boolean,
+	/**  `None` keeps models in the app data folder. */
+	models_dir: string | null,
+	/**  `auto` or `manual`. */
+	parallel_mode: string,
+	max_parallel_jobs: number,
+	thread_cap_per_job: number,
+	/**  `auto`, or `cpu` to never use a GPU. */
+	gpu_preference: string,
+	/**  Pause the queue on battery below this percent; 0 turns this off. */
+	pause_on_battery_below: number,
+	offline_mode: boolean,
+	/**  Delete finished jobs after this many days; 0 keeps them forever. */
+	retention_days: number,
 };
 
 /**  Thermal pressure. `Unknown` is a valid, non-fatal answer. */

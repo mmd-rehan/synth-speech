@@ -8,8 +8,10 @@
 #![forbid(unsafe_code)]
 
 mod migrations;
+mod settings;
 
 pub use migrations::LATEST_VERSION as SCHEMA_VERSION;
+pub use settings::Settings;
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -366,6 +368,52 @@ impl Database {
             .map_err(map_err)
     }
 
+    /// Replace one segment's text (an edit in the transcript viewer).
+    pub fn update_segment_text(&self, job_id: &str, idx: u32, text: &str) -> Result<()> {
+        let conn = self.lock();
+        let changed = conn
+            .execute(
+                "UPDATE segments SET text = ?3 WHERE job_id = ?1 AND idx = ?2",
+                rusqlite::params![job_id, idx, text],
+            )
+            .map_err(map_err)?;
+        if changed == 0 {
+            return Err(OasError::InvalidInput {
+                reason: "that transcript line no longer exists".into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Load settings, with defaults for anything unset or unreadable.
+    pub fn load_settings(&self) -> Result<Settings> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT key, value_json FROM settings")
+            .map_err(map_err)?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(map_err)?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(map_err)?;
+        Ok(Settings::from_stored(rows))
+    }
+
+    /// Save every setting, atomically.
+    pub fn save_settings(&self, settings: &Settings) -> Result<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(map_err)?;
+        for (key, value) in settings.to_stored()? {
+            tx.execute(
+                "INSERT INTO settings (key, value_json) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+                rusqlite::params![key, value],
+            )
+            .map_err(map_err)?;
+        }
+        tx.commit().map_err(map_err)
+    }
+
     /// Remove a job's transcript (a retry starts clean).
     pub fn clear_segments(&self, job_id: &str) -> Result<()> {
         let conn = self.lock();
@@ -480,6 +528,65 @@ mod tests {
         assert_eq!(texts, ["one", "two again"]);
         db.clear_segments("a").unwrap();
         assert!(db.list_segments("a").unwrap().is_empty());
+    }
+
+    #[test]
+    fn editing_a_segment_changes_only_its_text() {
+        let db = Database::open_in_memory().unwrap();
+        db.save_job(&job("a", 1)).unwrap();
+        db.save_segment("a", &seg(0, "helo")).unwrap();
+        db.update_segment_text("a", 0, "hello").unwrap();
+        let rows = db.list_segments("a").unwrap();
+        assert_eq!(rows[0].text, "hello");
+        assert_eq!(rows[0].end_ms, 900);
+        let missing = db.update_segment_text("a", 9, "x").unwrap_err();
+        assert_eq!(missing.code(), "INVALID_INPUT");
+    }
+
+    #[test]
+    fn settings_default_then_roundtrip_under_the_documented_keys() {
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(db.load_settings().unwrap(), Settings::default());
+        let saved = Settings {
+            theme: "dark".into(),
+            offline_mode: true,
+            thread_cap_per_job: 4,
+            models_dir: Some("/Volumes/My Disk/modèles".into()),
+            ..Settings::default()
+        };
+        db.save_settings(&saved).unwrap();
+        db.save_settings(&saved).unwrap(); // saving twice is harmless
+        assert_eq!(db.load_settings().unwrap(), saved);
+
+        let conn = db.lock();
+        let offline: String = conn
+            .query_row(
+                "SELECT value_json FROM settings WHERE key = 'net.offline_mode'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(offline, "true");
+    }
+
+    #[test]
+    fn a_bad_stored_setting_falls_back_alone() {
+        let db = Database::open_in_memory().unwrap();
+        db.save_settings(&Settings {
+            theme: "dark".into(),
+            ..Settings::default()
+        })
+        .unwrap();
+        db.lock()
+            .execute(
+                "UPDATE settings SET value_json = '\"lots\"'
+                 WHERE key = 'perf.thread_cap_per_job'",
+                [],
+            )
+            .unwrap();
+        let loaded = db.load_settings().unwrap();
+        assert_eq!(loaded.thread_cap_per_job, 8);
+        assert_eq!(loaded.theme, "dark");
     }
 
     #[test]

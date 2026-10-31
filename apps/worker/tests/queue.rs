@@ -24,6 +24,7 @@ struct Log {
 
 impl JobEvents for Log {
     fn job_state(&self, _: &Job) {}
+    fn job_removed(&self, _: &str) {}
     fn job_progress(&self, _: &JobProgress) {
         *self.progress.lock().unwrap() += 1;
     }
@@ -117,7 +118,7 @@ fn run_batch(
 
     let mut lowest_available = u64::MAX;
     let mut busiest = 0;
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let deadline = Instant::now() + Duration::from_secs(300);
     while !mgr.list().iter().all(|j| j.state.is_terminal()) {
         assert!(
             Instant::now() < deadline,

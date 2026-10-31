@@ -108,6 +108,7 @@ export const events = {
 	downloadState: makeEvent<DownloadState_Serialize, DownloadState_Deserialize>("download-state"),
 	governorWarned: makeEvent<GovernorWarned, GovernorWarned>("governor-warned"),
 	jobProgressChanged: makeEvent<JobProgressChanged_Serialize, JobProgressChanged_Deserialize>("job-progress-changed"),
+	jobRemoved: makeEvent<JobRemoved, JobRemoved>("job-removed"),
 	jobSegmentsAdded: makeEvent<JobSegmentsAdded, JobSegmentsAdded>("job-segments-added"),
 	jobStateChanged: makeEvent<JobStateChanged_Serialize, JobStateChanged_Deserialize>("job-state-changed"),
 };
@@ -395,6 +396,11 @@ export type JobProgress_Serialize = {
 	progress: number | null,
 	stage: string,
 	eta_secs: number | null,
+};
+
+/**  A job is gone. */
+export type JobRemoved = {
+	job_id: string,
 };
 
 /**  A request to add files to the queue. */

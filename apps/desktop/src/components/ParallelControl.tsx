@@ -1,4 +1,5 @@
 import { commands, type GovernorStatus } from "@/bindings";
+import { useSettings } from "@/lib/settings";
 import { gaugeMessage } from "@/lib/jobs";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +16,12 @@ export function ParallelControl({ status }: { status: GovernorStatus }) {
   const manual = status.mode === "manual";
   const limit = status.parallel_limit;
   const gauge = status.gauge;
+  const remember = useSettings((s) => s.update);
+
+  function choose(mode: GovernorStatus["mode"], max: number) {
+    void commands.governorSetParallel(mode, max);
+    void remember({ parallel_mode: mode, max_parallel_jobs: max });
+  }
 
   return (
     <section className="rounded-lg border p-4">
@@ -29,7 +36,7 @@ export function ParallelControl({ status }: { status: GovernorStatus }) {
                 "px-3 py-1 text-xs capitalize",
                 status.mode === mode && "bg-accent font-medium",
               )}
-              onClick={() => void commands.governorSetParallel(mode, limit)}
+              onClick={() => choose(mode, limit)}
             >
               {mode}
             </button>
@@ -47,7 +54,7 @@ export function ParallelControl({ status }: { status: GovernorStatus }) {
             value={limit}
             onChange={(e) => {
               const next = Number(e.target.value);
-              if (next >= 1) void commands.governorSetParallel("manual", next);
+              if (next >= 1) choose("manual", next);
             }}
           />
         </label>

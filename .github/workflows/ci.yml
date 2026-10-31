@@ -116,8 +116,22 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Target AVX2 as shipped builds do
+        if: runner.arch == 'X64'
+        shell: bash
+        run: |
+          {
+            echo "GGML_NATIVE=OFF"
+            echo "GGML_AVX=ON"
+            echo "GGML_AVX2=ON"
+            echo "GGML_FMA=ON"
+            echo "GGML_F16C=ON"
+          } >> "$GITHUB_ENV"
+
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: real-inference-simd-v1
 
       - name: Cache test model
         uses: actions/cache@v4

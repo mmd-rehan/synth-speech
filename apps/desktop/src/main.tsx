@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import App from "@/App";
 import { initTheme } from "@/lib/theme";
+import "@/lib/i18n";
 import "@/index.css";
 
 initTheme();

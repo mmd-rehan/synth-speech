@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Job } from "@/bindings";
 import {
+  estimateSecs,
   fileName,
+  filterSegments,
   formatDuration,
   formatTimestamp,
   gaugeMessage,
@@ -67,5 +69,29 @@ describe("gaugeMessage", () => {
     expect(gaugeMessage("safe", 1, 4)).toBe("Your machine can run 1 job at once.");
     expect(gaugeMessage("tight", 3, 4)).toMatch(/other apps to slow down/);
     expect(gaugeMessage("too_many", 9, 4)).toMatch(/Max safe is 4/);
+  });
+});
+
+describe("estimateSecs", () => {
+  it("adds up the work for every file", () => {
+    expect(estimateSecs([60, 120], 0.5)).toBe(90);
+  });
+
+  it("gives no number when any length or the speed is unknown", () => {
+    expect(estimateSecs([60, null], 0.5)).toBeNull();
+    expect(estimateSecs([60], null)).toBeNull();
+    expect(estimateSecs([], 0.5)).toBeNull();
+  });
+});
+
+describe("filterSegments", () => {
+  const lines = [
+    { idx: 0, text: "Hello there", start_ms: 0, end_ms: 1 },
+    { idx: 1, text: "General Kenobi", start_ms: 1, end_ms: 2 },
+  ];
+
+  it("matches regardless of case and keeps everything when empty", () => {
+    expect(filterSegments(lines, "KENOBI").map((l) => l.idx)).toEqual([1]);
+    expect(filterSegments(lines, "  ")).toHaveLength(2);
   });
 });

@@ -97,6 +97,7 @@ pub struct GovernorWarning {
 /// Receives everything the UI needs to know.
 pub trait JobEvents: Send + Sync {
     fn job_state(&self, job: &Job);
+    fn job_removed(&self, job_id: &str);
     fn job_progress(&self, progress: &JobProgress);
     fn job_segments(&self, job_id: &str, segments: &[JobSegment]);
     fn governor_warning(&self, warning: &GovernorWarning);
@@ -833,6 +834,7 @@ impl Core {
         self.jobs.remove(id);
         self.transcript_ends.remove(id);
         self.force_cpu.remove(id);
+        self.events.job_removed(id);
         Ok(())
     }
 

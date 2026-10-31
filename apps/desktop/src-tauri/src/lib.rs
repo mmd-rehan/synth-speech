@@ -99,6 +99,7 @@ fn specta_builder() -> Builder<tauri::Wry> {
             downloads::DownloadProgress,
             downloads::DownloadState,
             jobs::JobStateChanged,
+            jobs::JobRemoved,
             jobs::JobProgressChanged,
             jobs::JobSegmentsAdded,
             jobs::GovernorWarned

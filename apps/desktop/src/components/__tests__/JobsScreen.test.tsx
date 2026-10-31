@@ -62,7 +62,7 @@ describe("JobsScreen", () => {
     governorGetStatus.mockResolvedValue(STATUS);
     jobsPause.mockResolvedValue({ status: "ok", data: null });
     jobsRetry.mockResolvedValue({ status: "ok", data: null });
-    useJobs.setState({ warnings: [] });
+    useJobs.setState({ warnings: [], byId: {} });
   });
 
   it("invites the user to add files when there are no jobs", async () => {
@@ -105,8 +105,26 @@ describe("JobsScreen", () => {
     expect(jobsPause).toHaveBeenCalledWith("run");
     await user.click(screen.getByRole("button", { name: "Retry bad.wav" }));
     expect(jobsRetry).toHaveBeenCalledWith("bad");
-    expect(screen.getByText(/Could not read the audio/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not read the audio",
+    );
     expect(screen.queryByRole("button", { name: "Retry run.wav" })).toBeNull();
+  });
+
+  it("offers a smaller model when a job ran out of memory", async () => {
+    jobsList.mockResolvedValue([
+      job("big", "failed", {
+        error_code: "OUT_OF_MEMORY",
+        error_message: "Not enough memory to run this job.",
+      }),
+    ]);
+    const onNeedModel = vi.fn();
+    const user = userEvent.setup();
+    render(<JobsScreen onNeedModel={onNeedModel} />);
+    await user.click(
+      await screen.findByRole("button", { name: /pick a smaller model/i }),
+    );
+    expect(onNeedModel).toHaveBeenCalled();
   });
 
   it("switches to manual mode", async () => {

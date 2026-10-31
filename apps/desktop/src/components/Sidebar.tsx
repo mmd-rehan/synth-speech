@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Home,
   ListChecks,
@@ -16,16 +17,15 @@ export type ScreenId = "home" | "jobs" | "models" | "machine" | "settings";
 
 interface NavItem {
   id: ScreenId;
-  label: string;
   icon: LucideIcon;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "home", label: "Home", icon: Home },
-  { id: "jobs", label: "Jobs", icon: ListChecks },
-  { id: "models", label: "Models", icon: Boxes },
-  { id: "machine", label: "Machine", icon: Cpu },
-  { id: "settings", label: "Settings", icon: SettingsIcon },
+  { id: "home", icon: Home },
+  { id: "jobs", icon: ListChecks },
+  { id: "models", icon: Boxes },
+  { id: "machine", icon: Cpu },
+  { id: "settings", icon: SettingsIcon },
 ];
 
 interface SidebarProps {
@@ -34,6 +34,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
+  const { t } = useTranslation();
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col border-r bg-card">
       <div className="flex h-14 items-center gap-2 px-4">
@@ -43,8 +44,8 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         <span className="text-sm font-semibold">Open Audio Studio</span>
       </div>
 
-      <nav className="flex-1 space-y-1 px-2 py-2" aria-label="Primary">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+      <nav className="flex-1 space-y-1 px-2 py-2" aria-label={t("nav.primary")}>
+        {NAV_ITEMS.map(({ id, icon: Icon }) => {
           const isActive = id === active;
           return (
             <button
@@ -60,7 +61,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
               )}
             >
               <Icon className="h-4 w-4" />
-              {label}
+              {t(`nav.${id}`)}
             </button>
           );
         })}

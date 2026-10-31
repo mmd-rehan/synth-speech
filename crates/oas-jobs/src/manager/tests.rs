@@ -75,6 +75,7 @@ impl WorkerSpawner for FakeSpawner {
 #[derive(Default)]
 struct Recorder {
     states: Mutex<Vec<(String, JobState)>>,
+    removed: Mutex<Vec<String>>,
     progress: Mutex<Vec<JobProgress>>,
     segments: Mutex<Vec<JobSegment>>,
     warnings: Mutex<Vec<GovernorWarning>>,
@@ -86,6 +87,9 @@ impl JobEvents for Recorder {
             .lock()
             .unwrap()
             .push((job.id.clone(), job.state));
+    }
+    fn job_removed(&self, job_id: &str) {
+        self.removed.lock().unwrap().push(job_id.to_string());
     }
     fn job_progress(&self, progress: &JobProgress) {
         self.progress.lock().unwrap().push(progress.clone());
@@ -672,8 +676,10 @@ fn deleting_a_running_job_waits_for_the_worker() {
     h.segment(&id, 0.0, 1.0, "x");
     h.mgr.delete(&id).unwrap();
     assert_eq!(h.mgr.held_resources().0, 1);
+    assert!(h.events.removed.lock().unwrap().is_empty());
     h.exit(&id, true, false);
     assert!(h.mgr.get(&id).is_err());
+    assert_eq!(*h.events.removed.lock().unwrap(), [id.clone()]);
     assert!(h.db.list_jobs().unwrap().is_empty());
     assert!(h.db.list_segments(&id).unwrap().is_empty());
     h.assert_nothing_held();

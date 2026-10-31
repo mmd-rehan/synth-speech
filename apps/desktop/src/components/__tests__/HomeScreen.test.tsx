@@ -5,49 +5,56 @@ import userEvent from "@testing-library/user-event";
 // Mock the generated IPC bindings so the component can be tested without the
 // Tauri runtime.
 const appVersion = vi.fn();
-const spawnWorkerProbe = vi.fn();
+const modelsListInstalled = vi.fn();
 vi.mock("@/bindings", () => ({
   commands: {
     appVersion: () => appVersion(),
-    spawnWorkerProbe: () => spawnWorkerProbe(),
-    modelsListInstalled: () =>
-      Promise.resolve({ status: "ok", data: [] }),
+    modelsListInstalled: () => modelsListInstalled(),
   },
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 
 import { HomeScreen } from "@/components/screens/HomeScreen";
+import { useJobs } from "@/lib/jobs";
 
 describe("HomeScreen", () => {
   beforeEach(() => {
-    appVersion.mockReset();
-    spawnWorkerProbe.mockReset();
     appVersion.mockResolvedValue({ name: "Open Audio Studio", version: "0.1.0" });
+    modelsListInstalled.mockResolvedValue({
+      status: "ok",
+      data: [{ id: "whisper-tiny" }],
+    });
+    useJobs.setState({ byId: {} });
   });
 
   it("shows the app name and version from the backend", async () => {
     render(<HomeScreen />);
-    expect(
-      await screen.findByText(/Version 0\.1\.0/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Version 0\.1\.0/)).toBeInTheDocument();
   });
 
-  it("reports a ready worker on a successful probe", async () => {
-    spawnWorkerProbe.mockResolvedValue({ status: "ok", data: "0.1.0" });
-    render(<HomeScreen />);
-    await userEvent.click(screen.getByRole("button", { name: /check worker/i }));
-    expect(await screen.findByText(/worker ready/i)).toBeInTheDocument();
+  it("sends a user with no model to choose one", async () => {
+    modelsListInstalled.mockResolvedValue({ status: "ok", data: [] });
+    const onNeedModel = vi.fn();
+    render(<HomeScreen onNeedModel={onNeedModel} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /choose a model/i }),
+    );
+    expect(onNeedModel).toHaveBeenCalled();
   });
 
-  it("shows the error when the probe fails", async () => {
-    spawnWorkerProbe.mockResolvedValue({
-      status: "error",
-      error: "could not run the worker sidecar",
+  it("lists recent finished jobs, newest first, and opens them", async () => {
+    useJobs.setState({
+      byId: {
+        a: { id: "a", state: "completed", input_path: "/x/old.wav", finished_at_ms: 1 },
+        b: { id: "b", state: "completed", input_path: "/x/new.wav", finished_at_ms: 2 },
+        c: { id: "c", state: "running", input_path: "/x/busy.wav" },
+      } as never,
     });
-    render(<HomeScreen />);
-    await userEvent.click(screen.getByRole("button", { name: /check worker/i }));
-    expect(
-      await screen.findByText(/could not run the worker sidecar/i),
-    ).toBeInTheDocument();
+    const onOpenJob = vi.fn();
+    render(<HomeScreen onOpenJob={onOpenJob} />);
+    const rows = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(rows).toEqual(["new.wav", "old.wav"]);
+    await userEvent.click(screen.getByRole("button", { name: "new.wav" }));
+    expect(onOpenJob).toHaveBeenCalledWith("b");
   });
 });

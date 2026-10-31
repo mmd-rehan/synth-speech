@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { save } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
-  Download,
+  FileText,
   Pause,
   Play,
   RotateCcw,
@@ -12,9 +12,11 @@ import {
 } from "lucide-react";
 
 import { AddFiles } from "@/components/AddFiles";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { ParallelControl } from "@/components/ParallelControl";
 import { Button } from "@/components/ui/button";
 import { commands, type Job, type Priority } from "@/bindings";
+import { failureAction } from "@/lib/errors";
 import {
   fileName,
   formatDuration,
@@ -33,27 +35,14 @@ const STATE_LABEL: Record<Job["state"], string> = {
   cancelled: "Cancelled",
 };
 
-const EXPORT_FORMATS = ["txt", "srt", "vtt", "json"] as const;
-
+/** The live text stream under a row. */
 function Transcript({ job }: { job: Job }) {
   const segments = useJobs((s) => s.segments[job.id]);
   const loadSegments = useJobs((s) => s.loadSegments);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadSegments(job.id);
   }, [job.id, loadSegments]);
-
-  async function exportAs(format: (typeof EXPORT_FORMATS)[number]) {
-    const stem = fileName(job.input_path).replace(/\.[^.]+$/, "");
-    const path = await save({
-      defaultPath: `${stem}.${format}`,
-      filters: [{ name: format.toUpperCase(), extensions: [format] }],
-    });
-    if (!path) return;
-    const res = await commands.jobsExport(job.id, format, path);
-    setError(res.status === "ok" ? null : res.error);
-  }
 
   return (
     <div className="border-t bg-muted/30 px-4 py-3">
@@ -61,7 +50,7 @@ function Transcript({ job }: { job: Job }) {
         <ol className="max-h-64 space-y-1 overflow-y-auto text-sm">
           {segments.map((s) => (
             <li key={s.idx} className="flex gap-3">
-              <span className="w-14 shrink-0 tabular-nums text-muted-foreground">
+              <span className="w-14 shrink-0 font-mono text-xs leading-5 text-muted-foreground">
                 {formatTimestamp(s.start_ms ?? 0)}
               </span>
               <span>{s.text}</span>
@@ -71,31 +60,20 @@ function Transcript({ job }: { job: Job }) {
       ) : (
         <p className="text-sm text-muted-foreground">No text yet.</p>
       )}
-      {segments && segments.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Download className="h-4 w-4 text-muted-foreground" />
-          {EXPORT_FORMATS.map((format) => (
-            <Button
-              key={format}
-              size="sm"
-              variant="outline"
-              onClick={() => void exportAs(format)}
-            >
-              {format.toUpperCase()}
-            </Button>
-          ))}
-        </div>
-      )}
-      {error && (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
-        </p>
-      )}
     </div>
   );
 }
 
-function JobRow({ job }: { job: Job }) {
+function JobRow({
+  job,
+  onOpen,
+  onNeedModel,
+}: {
+  job: Job;
+  onOpen?: (id: string) => void;
+  onNeedModel?: () => void;
+}) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const eta = useJobs((s) => s.etaSecs[job.id]);
@@ -108,9 +86,14 @@ function JobRow({ job }: { job: Job }) {
   }
 
   const name = fileName(job.input_path);
+  const elapsed =
+    job.started_at_ms != null && job.finished_at_ms != null
+      ? (job.finished_at_ms - job.started_at_ms) / 1000
+      : null;
+  const action = failureAction(job.error_code);
   const detail =
-    job.state === "failed"
-      ? job.error_message
+    job.state === "completed" && elapsed != null
+      ? `Took ${formatDuration(elapsed)}`
       : job.state === "paused" && job.pause_origin === "governor"
         ? "Paused to protect your computer"
         : job.state === "queued"
@@ -153,6 +136,16 @@ function JobRow({ job }: { job: Job }) {
           )}
         </div>
 
+        {(job.progress ?? 0) > 0 && (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={`Open transcript of ${name}`}
+            onClick={() => onOpen?.(job.id)}
+          >
+            <FileText />
+          </Button>
+        )}
         {(job.state === "queued" || job.state === "paused") && (
           <select
             aria-label={`Priority of ${name}`}
@@ -218,17 +211,42 @@ function JobRow({ job }: { job: Job }) {
           <Trash2 />
         </Button>
       </div>
+      {job.state === "failed" && (
+        <div className="px-3 pb-3">
+          <ErrorNotice
+            message={job.error_message ?? t("error.unknown")}
+            actionLabel={
+              action === "smaller_model"
+                ? t("error.smallerModel")
+                : action === "models"
+                  ? t("error.models")
+                  : t("error.retry")
+            }
+            onAction={
+              action === "retry"
+                ? () => void act(() => commands.jobsRetry(job.id))
+                : onNeedModel
+            }
+          />
+        </div>
+      )}
       {error && (
-        <p role="alert" className="px-4 pb-2 text-sm text-destructive">
-          {error}
-        </p>
+        <div className="px-3 pb-3">
+          <ErrorNotice message={error} />
+        </div>
       )}
       {open && <Transcript job={job} />}
     </li>
   );
 }
 
-export function JobsScreen({ onNeedModel }: { onNeedModel?: () => void }) {
+export function JobsScreen({
+  onNeedModel,
+  onOpenJob,
+}: {
+  onNeedModel?: () => void;
+  onOpenJob?: (id: string) => void;
+}) {
   const byId = useJobs((s) => s.byId);
   const status = useJobs((s) => s.status);
   const warnings = useJobs((s) => s.warnings);
@@ -318,7 +336,12 @@ export function JobsScreen({ onNeedModel }: { onNeedModel?: () => void }) {
           </h2>
           <ul className="space-y-2">
             {group.jobs.map((job) => (
-              <JobRow key={job.id} job={job} />
+              <JobRow
+                key={job.id}
+                job={job}
+                onOpen={onOpenJob}
+                onNeedModel={onNeedModel}
+              />
             ))}
           </ul>
         </section>

@@ -22,6 +22,7 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 struct Quiet;
 impl JobEvents for Quiet {
     fn job_state(&self, _: &Job) {}
+    fn job_removed(&self, _: &str) {}
     fn job_progress(&self, _: &JobProgress) {}
     fn job_segments(&self, _: &str, _: &[JobSegment]) {}
     fn governor_warning(&self, _: &GovernorWarning) {}

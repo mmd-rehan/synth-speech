@@ -1,25 +1,37 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { AddFiles } from "@/components/AddFiles";
 import { Button } from "@/components/ui/button";
 import { commands, type AppInfo } from "@/bindings";
+import { fileName, useJobs } from "@/lib/jobs";
 
-type ProbeState =
-  | { kind: "idle" }
-  | { kind: "running" }
-  | { kind: "ok"; version: string }
-  | { kind: "error"; message: string };
+const RECENT_JOBS = 5;
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border p-4">
+      <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
 
 export function HomeScreen({
   onJobsAdded,
   onNeedModel,
+  onSeeJobs,
+  onOpenJob,
 }: {
   onJobsAdded?: () => void;
   onNeedModel?: () => void;
+  onSeeJobs?: () => void;
+  onOpenJob?: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [probe, setProbe] = useState<ProbeState>({ kind: "idle" });
+  const [installed, setInstalled] = useState(0);
+  const byId = useJobs((s) => s.byId);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,66 +44,72 @@ export function HomeScreen({
         // Outside the Tauri runtime (e.g. a plain browser) there is no app
         // version to read; leave it unset.
       });
+    commands
+      .modelsListInstalled()
+      .then((res) => {
+        if (!cancelled && res.status === "ok") setInstalled(res.data.length);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
-  async function checkWorker() {
-    setProbe({ kind: "running" });
-    try {
-      const result = await commands.spawnWorkerProbe();
-      if (result.status === "ok") {
-        setProbe({ kind: "ok", version: result.data });
-      } else {
-        setProbe({ kind: "error", message: result.error });
-      }
-    } catch (err) {
-      setProbe({ kind: "error", message: String(err) });
-    }
-  }
+  const jobs = useMemo(() => Object.values(byId), [byId]);
+  const done = jobs.filter((j) => j.state === "completed");
+  const recent = [...done]
+    .sort((a, b) => (b.finished_at_ms ?? 0) - (a.finished_at_ms ?? 0))
+    .slice(0, RECENT_JOBS);
+  const queued = jobs.filter(
+    (j) =>
+      j.state === "queued" || j.state === "running" || j.state === "starting",
+  ).length;
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        {info ? info.name : "Open Audio Studio"}
-      </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Run speech AI models locally, on your own machine.
-        {info ? ` Version ${info.version}.` : ""}
-      </p>
-
-      <section className="mt-8">
-        <AddFiles dropZone onAdded={onJobsAdded} onNeedModel={onNeedModel} />
-      </section>
-
-      <section className="mt-8 rounded-lg border p-6">
-        <h2 className="text-sm font-semibold">Worker sidecar</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Spawn the inference worker process and read its ready signal.
+    <div className="mx-auto max-w-3xl space-y-6 px-8 py-10">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {info ? info.name : "Open Audio Studio"}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("home.tagline")}
+          {info ? ` Version ${info.version}.` : ""}
         </p>
+      </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <Button onClick={checkWorker} disabled={probe.kind === "running"}>
-            {probe.kind === "running" && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
-            Check worker
-          </Button>
+      <AddFiles dropZone onAdded={onJobsAdded} onNeedModel={onNeedModel} />
 
-          {probe.kind === "ok" && (
-            <span className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-500">
-              <CheckCircle2 className="h-4 w-4" />
-              Worker ready (v{probe.version})
-            </span>
-          )}
-          {probe.kind === "error" && (
-            <span className="flex items-center gap-1.5 text-sm text-destructive">
-              <XCircle className="h-4 w-4" />
-              {probe.message}
-            </span>
+      <div className="grid grid-cols-3 gap-3">
+        <Stat label={t("home.installed")} value={installed} />
+        <Stat label={t("home.inQueue")} value={queued} />
+        <Stat label={t("home.done")} value={done.length} />
+      </div>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">{t("home.recent")}</h2>
+          {jobs.length > 0 && (
+            <Button size="sm" variant="ghost" onClick={onSeeJobs}>
+              {t("home.seeAll")}
+            </Button>
           )}
         </div>
+        {recent.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("home.noJobs")}</p>
+        ) : (
+          <ul className="divide-y rounded-lg border">
+            {recent.map((job) => (
+              <li key={job.id}>
+                <button
+                  className="w-full truncate px-4 py-2 text-left text-sm hover:bg-accent"
+                  onClick={() => onOpenJob?.(job.id)}
+                >
+                  {fileName(job.input_path)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   );

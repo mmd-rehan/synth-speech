@@ -21,6 +21,22 @@ function targetTriple() {
   return match[1].trim();
 }
 
+/**
+ * whisper.cpp defaults to the build machine's exact CPU, which would crash on
+ * older ones, and MSVC gets no SIMD at all. Shipped x86-64 workers target AVX2
+ * explicitly. ARM builds keep their defaults.
+ */
+function portableSimdFlags(triple) {
+  if (!triple.startsWith("x86_64")) return {};
+  return {
+    GGML_NATIVE: "OFF",
+    GGML_AVX: "ON",
+    GGML_AVX2: "ON",
+    GGML_FMA: "ON",
+    GGML_F16C: "ON",
+  };
+}
+
 function main() {
   const triple = targetTriple();
   const isWindows = triple.includes("windows");
@@ -36,6 +52,7 @@ function main() {
   execFileSync("cargo", cargoArgs, {
     cwd: workspaceRoot,
     stdio: "inherit",
+    env: { ...process.env, ...portableSimdFlags(triple) },
   });
 
   const builtDir = explicitTarget

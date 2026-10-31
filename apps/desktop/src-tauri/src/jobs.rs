@@ -23,6 +23,12 @@ pub struct JobStateChanged {
     pub job: Job,
 }
 
+/// A job is gone.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct JobRemoved {
+    pub job_id: String,
+}
+
 /// Progress for a running job (at most 4 per second per job).
 #[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
 pub struct JobProgressChanged {
@@ -48,6 +54,13 @@ struct TauriJobEvents(AppHandle);
 impl JobEvents for TauriJobEvents {
     fn job_state(&self, job: &Job) {
         let _ = JobStateChanged { job: job.clone() }.emit(&self.0);
+    }
+
+    fn job_removed(&self, job_id: &str) {
+        let _ = JobRemoved {
+            job_id: job_id.to_string(),
+        }
+        .emit(&self.0);
     }
 
     fn job_progress(&self, progress: &JobProgress) {
